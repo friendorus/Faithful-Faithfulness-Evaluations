@@ -12,6 +12,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from mst.data.datasets.dataset_3d_duke import DUKE_Dataset3D
 from mst.data.datasets.dataset_3d_lidc import LIDC_Dataset3D
 from mst.data.datasets.dataset_3d_mrnet import MRNet_Dataset3D
+from mst.data.datasets.dataset_3d_local import Local_Dataset3D
 
 from mst.data.datamodules import DataModule
 from mst.models.resnet import ResNet, ResNetSliceTrans
@@ -24,22 +25,24 @@ def get_dataset(name, split, **kwargs):
         return LIDC_Dataset3D(split=split, **kwargs)
     elif name == 'MRNet':
         return MRNet_Dataset3D(split=split, **kwargs)
+    elif name == 'Local':
+        return Local_Dataset3D(split=split, **kwargs)
     else:
         raise ValueError(f"Unknown dataset: {name}")
 
-def get_model(name, **kwargs):
+def get_model(name, num_classes=2, **kwargs):
     if name == 'ResNet':
-        return ResNet(in_ch=1, out_ch=2, spatial_dims=3, **kwargs)
+        return ResNet(in_ch=1, out_ch=num_classes, spatial_dims=3, **kwargs)
     elif name == 'ResNetSliceTrans':
-        return ResNetSliceTrans(in_ch=1, out_ch=2, spatial_dims=2, **kwargs)
+        return ResNetSliceTrans(in_ch=1, out_ch=num_classes, spatial_dims=2, **kwargs)
     elif name == 'DinoV2ClassifierSlice':
-        return DinoV2ClassifierSlice(in_ch=3, out_ch=2, spatial_dims=2, **kwargs)
+        return DinoV2ClassifierSlice(in_ch=3, out_ch=num_classes, spatial_dims=2, **kwargs)
     else:
         raise ValueError(f"Unknown model: {name}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True, choices=['DUKE', 'LIDC', 'MRNet'])
+    parser.add_argument('--dataset', type=str, required=True, choices=['DUKE', 'LIDC', 'MRNet', 'Local'])
     parser.add_argument('--model', type=str, required=True, choices=['ResNet', 'ResNetSliceTrans', 'DinoV2ClassifierSlice'])
     parser.add_argument('--path_root_output', type=str, default='./runs', help="Root output path")
     args = parser.parse_args()
@@ -71,12 +74,15 @@ if __name__ == "__main__":
         batch_size=batch_size, 
         pin_memory=True,
         weights=weights,
-        num_workers=24,
+        num_workers=0, # Adjust based on your system from 24
         num_train_samples=min(len(ds_train), 2000)
     )
 
     # ------------ Initialize Model ------------
-    model = get_model(args.model, 
+    # Determine number of output classes based on dataset labels
+    num_classes = len(ds_train.df[ds_train.LABEL].unique())
+    
+    model = get_model(args.model, num_classes=num_classes,
                     #   use_registers = True,
                     #   model_size='s',
                     #   use_bottleneck=True,
