@@ -1,0 +1,29 @@
+name: MST
+channels:
+  - defaults
+  - pytorch
+  - nvidia
+dependencies:
+  - python=3.10
+  - pip=24.2
+  - pytorch=2.4.1
+  - torchvision=0.19.1
+  - torchaudio=2.4.1
+  - pytorch-cuda=12.1
+  - pip:
+    - einops==0.8.0
+    - monai==1.3.2
+    - matplotlib==3.9.2
+    - numpy==2.0.1
+    - openpyxl==3.1.5
+    - pytorch-lightning==2.4.0
+    - pydicom==2.4.4 
+    - pandas==2.2.2
+    - scikit-learn==1.5.1  
+    - seaborn==0.13.2
+    - tqdm==4.66.5
+    - torchio==0.19.9
+    - wandb==0.17.9
+    # - transformers 
+    - -e .
+
