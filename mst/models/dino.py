@@ -1,3 +1,4 @@
+from SimpleITK import Slice
 import torch 
 from .base_model import BasicClassifier
 # from transformers import Dinov2Model
@@ -140,6 +141,8 @@ class DinoV2ClassifierSlice(BasicClassifier):
             pos = torch.arange(0, x.shape[1], dtype=torch.long, device=x.device)
             x += self.slice_pos_emb(pos)
         
+        
+        # Slice Transformer
         if self.slice_fusion_type == 'transformer':
             x = torch.concat([self.cls_token.repeat(B, 1, 1), x], dim=1)
  
