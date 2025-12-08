@@ -45,6 +45,8 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, required=True, choices=['DUKE', 'LIDC', 'MRNet', 'Local'])
     parser.add_argument('--model', type=str, required=True, choices=['ResNet', 'ResNetSliceTrans', 'DinoV2ClassifierSlice'])
     parser.add_argument('--path_root_output', type=str, default='./runs', help="Root output path")
+    parser.add_argument('--ckpt_path', type=str, default=None,
+                    help="Path to checkpoint file to resume training")
     args = parser.parse_args()
 
     #------------ Settings/Defaults ----------------
@@ -74,7 +76,7 @@ if __name__ == "__main__":
         batch_size=batch_size, 
         pin_memory=True,
         weights=weights,
-        num_workers=0, # Adjust based on your system from 24
+        num_workers=24, # Adjust based on your system from 24
         num_train_samples=min(len(ds_train), 2000)
     )
 
@@ -126,7 +128,9 @@ if __name__ == "__main__":
     )
 
     # ---------------- Execute Training ----------------
-    trainer.fit(model, datamodule=dm)
+    #trainer.fit(model, datamodule=dm)
+    trainer.fit(model, datamodule=dm, ckpt_path=args.ckpt_path)
+
 
     # ------------- Save path to best model -------------
     model.save_best_checkpoint(path_run_dir, checkpointing.best_model_path)
