@@ -22,3 +22,20 @@
 /results
 /wandb
 !/media/**
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Python cache
+__pycache__/
+
+# Experiment outputs
+results/
+results_tta/
+runs/
+*.pt
+*.pth
+*.npy
+*.npz
+
