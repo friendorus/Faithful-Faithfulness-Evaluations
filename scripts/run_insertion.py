@@ -8,7 +8,7 @@ from tqdm import tqdm
 from mst.models.dino import DinoV2ClassifierSlice
 from mst.data.datasets.dataset_3d_local import Local_Dataset3D
 
-from mst_xai.evaluation.deletion import deletion_evaluation
+from mst_xai.evaluation.insertion import insertion_evaluation
 from mst_xai.utils.load_saliency import load_saliency
 
 
@@ -16,7 +16,7 @@ from mst_xai.utils.load_saliency import load_saliency
 # Arguments
 # ============================================================
 
-parser = argparse.ArgumentParser(description="Deletion faithfulness evaluation")
+parser = argparse.ArgumentParser(description="Insertion faithfulness evaluation")
 parser.add_argument("--run_dir", default="./runs", type=str)
 parser.add_argument("--run_folder", required=True, type=str)
 parser.add_argument("--output_dir", default="./", type=str)
@@ -31,13 +31,13 @@ parser.add_argument(
 parser.add_argument("--max_samples", type=int, default=-1,
                     help="-1 = all available saliency files")
 parser.add_argument("--steps", type=int, default=20,
-                    help="Number of deletion steps")
-parser.add_argument("--replacement", default="zero",
-                    choices=["zero", "mean"],
-                    help="Replacement strategy")
+                    help="Number of insertion steps")
+parser.add_argument("--baseline", default="zero",
+                    choices=["zero", "mean", "zero_conf"],
+                    help="Insertion baseline")
 
 parser.add_argument("--save_curves", action="store_true",
-                    help="Save per-sample deletion curves")
+                    help="Save per-sample insertion curves")
 
 args = parser.parse_args()
 
@@ -52,7 +52,7 @@ model_name = run_folder.name.split("_", 1)[0]
 
 path_run = Path(args.run_dir) / run_folder
 results_path = Path(args.output_dir) / "results" / run_folder
-results_root = results_path / "evaluation" / "deletion"
+results_root = results_path / "evaluation" / "insertion"
 saliency_root = results_path / args.xai_method
 
 results_root.mkdir(parents=True, exist_ok=True)
@@ -61,7 +61,6 @@ assert saliency_root.exists(), f"Saliency folder not found: {saliency_root}"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.set_float32_matmul_precision("high")
-
 
 # ============================================================
 # Load model
@@ -127,20 +126,20 @@ for i in range(len(dataset)):
 # ============================================================
 
 
-curve_root = results_root / "deletion_curves" / args.xai_method
+curve_root = results_root / "insertion_curves" / args.xai_method
 if args.save_curves:
     curve_root.mkdir(parents=True, exist_ok=True)
-
+    
 
 # ============================================================
-# Deletion loop
+# Insertion loop
 # ============================================================
 
 rows = []
 
 pbar = tqdm(
     saliency_files,
-    desc=f"Deletion ({args.xai_method})",
+    desc=f"Insertion ({args.xai_method})",
     ncols=100,
 )
 
@@ -165,15 +164,15 @@ for pt_path in pbar:
         logits = model(batch["source"])
         pred = logits.argmax(dim=1).item()
 
-    # ---------- Deletion evaluation ----------
-    percentages, confidences, auc_score = deletion_evaluation(
+    # ---------- Insertion evaluation ----------
+    percentages, confidences, auc_score = insertion_evaluation(
         model=model,
         batch=batch,
         saliency=saliency,
         target_class=pred,
         patch_size=patch_size,
         steps=args.steps,
-        replacement=args.replacement,
+        baseline=args.baseline,
     )
 
     rows.append({
@@ -182,7 +181,7 @@ for pt_path in pbar:
         "model": model_name,
         "xai_method": args.xai_method,
         "predicted_class": pred,
-        "deletion_auc": auc_score,
+        "insertion_auc": auc_score,
     })
 
     # ---------- Save curve (optional) ----------
@@ -207,17 +206,17 @@ for pt_path in pbar:
 df = pd.DataFrame(rows)
 
 # Per-sample AUC
-per_sample_csv = results_root / f"deletion_{args.xai_method}.csv"
+per_sample_csv = results_root / f"insertion_{args.xai_method}.csv"
 df.to_csv(per_sample_csv, index=False)
 
 # Aggregated summary
 summary = (
-    df.groupby("xai_method")["deletion_auc"]
+    df.groupby("xai_method")["insertion_auc"]
     .agg(["mean", "std", "count"])
     .reset_index()
 )
 
-summary_csv = results_root / f"deletion_{args.xai_method}_summary.csv"
+summary_csv = results_root / f"insertion_{args.xai_method}_summary.csv"
 summary.to_csv(summary_csv, index=False)
 
 
@@ -225,7 +224,7 @@ summary.to_csv(summary_csv, index=False)
 # Final output
 # ============================================================
 
-print("\nDeletion evaluation finished.")
+print("\nInsertion evaluation finished.")
 print(f"Per-sample AUC saved to: {per_sample_csv}")
 print(f"Summary saved to:        {summary_csv}")
 print("\nSummary:")

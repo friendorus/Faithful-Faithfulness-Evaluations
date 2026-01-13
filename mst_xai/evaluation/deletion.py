@@ -12,10 +12,15 @@ def deletion_evaluation(
     target_class: int,
     patch_size: int,
     steps: int = 20,
-    replacement: str = "zero",   # "zero" | "mean"
+    replacement: str = "zero",   # "zero" | "mean" | "zero_conf"
+    reference_source: torch.Tensor | None = None,
 ):
+    if replacement == "zero_conf":
+        assert reference_source is not None, \
+            "reference_source required for zero_conf replacement"
+
     """
-    Deletion faithfulness evaluation (patch-level).
+    Deletion faithfulness evaluation ***(patch-level).
 
     Parameters
     ----------
@@ -75,10 +80,12 @@ def deletion_evaluation(
     # --------------------------------------------------
     # 3. Replacement tensor
     # --------------------------------------------------
-    if replacement == "zero":
+    if replacement == "zero": # Blackening
         repl = torch.zeros_like(source)
-    elif replacement == "mean":
+    elif replacement == "mean": # Global mean from the image input
         repl = source.mean() * torch.ones_like(source)
+    elif replacement == "zero_conf": # Rplace with reference patch that have zero confidence
+        repl = reference_source.clone()
     else:
         raise ValueError(f"Unknown replacement: {replacement}")
 
