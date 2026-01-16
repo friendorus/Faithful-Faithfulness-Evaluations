@@ -40,6 +40,11 @@ Step 2 - Install `requirements.txt`
 pip install -r requirement.txt
 ```
 
+# Train Model
+Run Training Model
+```bash
+python scripts/main_train.py --dataset Local --model DinoV2ClassifierSlice
+```
 
 
 
