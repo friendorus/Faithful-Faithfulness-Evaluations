@@ -1,5 +1,10 @@
 import argparse
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(PROJECT_ROOT))
+
 from datetime import datetime
 import wandb 
 import torch 
@@ -12,7 +17,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from mst.data.datasets.dataset_3d_duke import DUKE_Dataset3D
 from mst.data.datasets.dataset_3d_lidc import LIDC_Dataset3D
 from mst.data.datasets.dataset_3d_mrnet import MRNet_Dataset3D
-from MST.mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
+from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
 
 from mst.data.datamodules import DataModule
 from mst.models.resnet import ResNet, ResNetSliceTrans
