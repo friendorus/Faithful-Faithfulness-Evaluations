@@ -30,15 +30,14 @@ def parse_local_data(path_root):
 
 
 class Local_Dataset3D(data.Dataset):
-    PATH_ROOT = Path('/home/jovyan/work/ALL/')
+    #PATH_ROOT = Path('/home/jovyan/work/ALL/')
+    PATH_ROOT = Path(r'C:\Users\poolpol\Downloads\ODELIA_dataset')
     LABEL = 'Lesion'
 
     def __init__(
             self,
             path_root=None,
-            fold = 0,
             split= None,
-            fraction=None,
             transform = None,
             image_resize = None,
             resample=None,
@@ -76,43 +75,13 @@ class Local_Dataset3D(data.Dataset):
 
 
         # Get split file
-        path_csv = self.path_root/'metadata_unilateral/split.csv'
+        path_csv = self.path_root/'metadata_unilateral/split_new.csv'
         path_or_stream = path_csv
-        self.df = self.load_split(path_or_stream, fold=fold, split=split, fraction=fraction)
+        self.df = self.load_split(path_or_stream, split=split)
 
         # Ensure the split dataframe uses UID as index when available
         if 'UID' in self.df.columns:
             self.df = self.df.set_index('UID')
-
-        # Load annotations and robustly obtain UID and label
-        path_annotations = self.path_root/'metadata_unilateral/annotation.csv'
-        annotations_df = pd.read_csv(path_annotations, index_col=0, dtype={'PatientID': str})
-
-        # If annotations_df index is not named 'UID', set it for clarity
-        if annotations_df.index.name is None:
-            annotations_df.index.name = 'UID'
-
-        # Join the label column from annotations into the split dataframe
-        if self.LABEL in annotations_df.columns:
-            self.df[self.LABEL] = annotations_df[self.LABEL]
-        else:
-            # try common alternative column names
-            renamed = False
-            for alt in ['uid', 'Id', 'UID']:
-                if alt in annotations_df.columns:
-                    annotations_df = annotations_df.rename(columns={alt: 'UID'})
-                    annotations_df = annotations_df.set_index('UID')
-                    if self.LABEL in annotations_df.columns:
-                        self.df[self.LABEL] = annotations_df[self.LABEL]
-                    renamed = True
-                    break
-            if not renamed:
-                # fallback: try case-insensitive match for label
-                for c in annotations_df.columns:
-                    if c.lower() == self.LABEL.lower():
-                        self.df[self.LABEL] = annotations_df[c]
-                        renamed = True
-                        break
 
         # Use provided item_pointers if specified, otherwise use all UIDs from the dataframe index
         if item_pointers is not None:
@@ -153,11 +122,8 @@ class Local_Dataset3D(data.Dataset):
 
 
     @classmethod
-    def load_split(cls, filepath_or_buffer=None, fold=0, split=None, fraction=None):
+    def load_split(cls, filepath_or_buffer=None, split=None):
         df = pd.read_csv(filepath_or_buffer)
-        df = df[df['Fold'] == fold]
         if split is not None:
-            df = df[df['Split'] == split]   
-        if fraction is not None:
-            df = df.sample(frac=fraction, random_state=0).reset_index()
+            df = df[df['Split'] == split]
         return df

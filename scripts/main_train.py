@@ -59,6 +59,7 @@ if __name__ == "__main__":
     # ------------ Load Data ----------------
     ds_train = get_dataset(args.dataset, split='train', flip=True, noise=True, random_center=True, random_rotate=True)
     ds_val = get_dataset(args.dataset, split='val')
+    ds_test = get_dataset(args.dataset, split='test')
     
     samples = len(ds_train) + len(ds_val)
     batch_size = 2 
@@ -72,7 +73,7 @@ if __name__ == "__main__":
     dm = DataModule(
         ds_train=ds_train,
         ds_val=ds_val,
-        ds_test=ds_val,
+        ds_test=ds_test,
         batch_size=batch_size, 
         pin_memory=True,
         weights=weights,

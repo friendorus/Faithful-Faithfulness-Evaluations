@@ -28,6 +28,21 @@ Run Script: [scripts/main_predict.py](scripts/main_predict.py)
 
 ------------------------
 # MST – Explainable AI & Faithfulness Evaluation
+
+Step 1 - Create Environment from `environment.yaml`
+
+```python
+conda env create -f environment.yaml
+```
+
+Step 2 - Install `requirements.txt`
+```bash
+pip install -r requirement.txt
+```
+
+
+
+
 This repository extends the MST (Multi-Slice Transformer) framework with explainable AI (XAI) methods and faithfulness evaluation for 3D medical images.
 The pipeline is designed to be:
 * model-faithful (ViT / patch-based)
