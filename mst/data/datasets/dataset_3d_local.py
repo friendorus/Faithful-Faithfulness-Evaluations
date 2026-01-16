@@ -30,8 +30,7 @@ def parse_local_data(path_root):
 
 
 class Local_Dataset3D(data.Dataset):
-    #PATH_ROOT = Path('/home/jovyan/work/ALL/')
-    PATH_ROOT = Path(r'C:\Users\poolpol\Downloads\ODELIA_dataset')
+    PATH_ROOT = Path('datasets')
     LABEL = 'Lesion'
 
     def __init__(
