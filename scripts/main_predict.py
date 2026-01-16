@@ -28,7 +28,7 @@ from monai.metrics import compute_average_surface_distance, compute_iou, DiceMet
 from mst.data.datasets.dataset_3d_duke import DUKE_Dataset3D
 from mst.data.datasets.dataset_3d_lidc import LIDC_Dataset3D
 from mst.data.datasets.dataset_3d_mrnet import MRNet_Dataset3D
-from MST.mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
+from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
 
 from mst.data.datamodules import DataModule
 from mst.models.resnet import ResNet, ResNetSliceTrans
