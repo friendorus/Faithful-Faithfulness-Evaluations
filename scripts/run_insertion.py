@@ -6,7 +6,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from mst.models.dino import DinoV2ClassifierSlice
-from mst.data.datasets.dataset_3d_local import Local_Dataset3D
+from MST.mst.data.datasets.dataset_3d_odelia import Local_Dataset3D
 
 from mst_xai.evaluation.insertion import insertion_evaluation
 from mst_xai.utils.load_saliency import load_saliency

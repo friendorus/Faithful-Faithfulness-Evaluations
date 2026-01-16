@@ -29,7 +29,7 @@ def parse_local_data(path_root):
     return df
 
 
-class Local_Dataset3D(data.Dataset):
+class ODELIA_Dataset3D(data.Dataset):
     PATH_ROOT = Path('/home/jovyan/work/MST/mst/data/datasets/datasets')
     LABEL = 'Lesion'
 

@@ -28,7 +28,7 @@ from monai.metrics import compute_average_surface_distance, compute_iou, DiceMet
 from mst.data.datasets.dataset_3d_duke import DUKE_Dataset3D
 from mst.data.datasets.dataset_3d_lidc import LIDC_Dataset3D
 from mst.data.datasets.dataset_3d_mrnet import MRNet_Dataset3D
-from mst.data.datasets.dataset_3d_local import Local_Dataset3D
+from MST.mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
 
 from mst.data.datamodules import DataModule
 from mst.models.resnet import ResNet, ResNetSliceTrans
@@ -43,8 +43,8 @@ def get_dataset(name, split, **kwargs):
         return LIDC_Dataset3D(split=split, **kwargs)
     elif name == 'MRNet':
         return MRNet_Dataset3D(split=split, **kwargs)
-    elif name == 'Local':
-        return Local_Dataset3D(split=split, **kwargs)        
+    elif name == 'ODELIA':
+        return ODELIA_Dataset3D(split=split, **kwargs)        
     else:
         raise ValueError(f"Unknown dataset: {name}")
 
@@ -212,7 +212,7 @@ if __name__ == "__main__":
     parser.add_argument('--get_segmentation', action='store_true', help='Flag to get attention')
     parser.add_argument('--use_tta', action='store_true', help='Use test time augmentation')
     parser.add_argument('--dataset', default=None, type=str,
-                    help='Explicit dataset name (LIDC, DUKE, MRNet, Local)')
+                    help='Explicit dataset name (LIDC, DUKE, MRNet, ODELIA)')
     parser.add_argument('--checkpoint', default=None, type=str,
                     help='Optional explicit checkpoint file path (overrides folder-based loader)')
     parser.add_argument('--force', action='store_true', help='Force re-run even if results.csv exists')

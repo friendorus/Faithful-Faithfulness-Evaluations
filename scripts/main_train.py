@@ -12,7 +12,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from mst.data.datasets.dataset_3d_duke import DUKE_Dataset3D
 from mst.data.datasets.dataset_3d_lidc import LIDC_Dataset3D
 from mst.data.datasets.dataset_3d_mrnet import MRNet_Dataset3D
-from mst.data.datasets.dataset_3d_local import Local_Dataset3D
+from MST.mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
 
 from mst.data.datamodules import DataModule
 from mst.models.resnet import ResNet, ResNetSliceTrans
@@ -25,8 +25,8 @@ def get_dataset(name, split, **kwargs):
         return LIDC_Dataset3D(split=split, **kwargs)
     elif name == 'MRNet':
         return MRNet_Dataset3D(split=split, **kwargs)
-    elif name == 'Local':
-        return Local_Dataset3D(split=split, **kwargs)
+    elif name == 'ODELIA':
+        return ODELIA_Dataset3D(split=split, **kwargs)
     else:
         raise ValueError(f"Unknown dataset: {name}")
 
@@ -42,11 +42,10 @@ def get_model(name, num_classes=2, **kwargs):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True, choices=['DUKE', 'LIDC', 'MRNet', 'Local'])
+    parser.add_argument('--dataset', type=str, required=True, choices=['DUKE', 'LIDC', 'MRNet', 'ODELIA'])
     parser.add_argument('--model', type=str, required=True, choices=['ResNet', 'ResNetSliceTrans', 'DinoV2ClassifierSlice'])
     parser.add_argument('--path_root_output', type=str, default='./runs', help="Root output path")
-    parser.add_argument('--ckpt_path', type=str, default=None,
-                    help="Path to checkpoint file to resume training")
+    parser.add_argument('--ckpt_path', type=str, default=None, help="Path to checkpoint file to resume training")
     args = parser.parse_args()
 
     #------------ Settings/Defaults ----------------

@@ -40,6 +40,11 @@ Step 2 - Install `requirements.txt`
 pip install -r requirement.txt
 ```
 
+Step 3 
+```bash
+pip isntall -e .
+```
+
 # Train Model
 Run Training Model
 ```bash

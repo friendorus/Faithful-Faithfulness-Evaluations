@@ -14,7 +14,7 @@ from torchvision.utils import save_image
 from mst.models.dino import DinoV2ClassifierSlice
 from mst_xai.xai_methods.gradcam_patch_level import GradCAM_MST
 from mst_xai.xai_methods.gradcam_slice_level import GradCAM_Slice
-from mst.data.datasets.dataset_3d_local import Local_Dataset3D
+from MST.mst.data.datasets.dataset_3d_odelia import Local_Dataset3D
 
 
 
