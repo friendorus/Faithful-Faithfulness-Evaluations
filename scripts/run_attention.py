@@ -6,13 +6,17 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import sys
 from pathlib import Path
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(PROJECT_ROOT))
+
 from collections import defaultdict
 from torchvision.utils import save_image
 
 from mst.models.dino import DinoV2ClassifierSlice
 from mst_xai.xai_methods.attention import Attention_MST
-from MST.mst.data.datasets.dataset_3d_odelia import Local_Dataset3D
+from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
 
 
 # ============================================================
@@ -36,8 +40,8 @@ args = parser.parse_args()
 # ============================================================
 
 def get_dataset(name, split):
-    if name == 'Local':
-        return Local_Dataset3D(split=split)
+    if name == 'ODELIA':
+        return ODELIA_Dataset3D(split=split)
     raise ValueError(f"Unknown dataset: {name}")
 
 

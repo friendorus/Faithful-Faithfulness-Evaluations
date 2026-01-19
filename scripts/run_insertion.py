@@ -2,11 +2,14 @@ import argparse
 import torch
 import pandas as pd
 import numpy as np
+import sys
 from pathlib import Path
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(PROJECT_ROOT))
 from tqdm import tqdm
 
 from mst.models.dino import DinoV2ClassifierSlice
-from MST.mst.data.datasets.dataset_3d_odelia import Local_Dataset3D
+from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
 
 from mst_xai.evaluation.insertion import insertion_evaluation
 from mst_xai.utils.load_saliency import load_saliency
@@ -78,8 +81,8 @@ if isinstance(patch_size, tuple):
 # Load dataset
 # ============================================================
 
-if dataset_name == "Local":
-    dataset = Local_Dataset3D(split="test")
+if dataset_name == "ODELIA":
+    dataset = ODELIA_Dataset3D(split="test")
 else:
     raise ValueError(f"Unsupported dataset: {dataset_name}")
 

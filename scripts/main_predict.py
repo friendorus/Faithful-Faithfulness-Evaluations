@@ -312,12 +312,34 @@ if __name__ == "__main__":
     if not skip_prediction:
         logger.info("Running prediction loop...")
         for n, batch in enumerate(tqdm(dm.test_dataloader())):
-            # ... your prediction code that appends dicts to `results` ...
-            pass
+            source, target = batch['source'], batch['target']
+            uid = batch['uid'][0] if isinstance(batch['uid'], list) else str(batch['uid'].item())
     
-        # Save results DataFrame
+            pred, _, _ = run_pred(
+                model,
+                batch,
+                save_attn=False,
+                use_softmax=True,
+                use_tta=use_tta
+            )
+    
+            probs = torch.softmax(pred, dim=-1).cpu()
+            pred_class = torch.argmax(probs, dim=1)
+    
+            for b in range(target.shape[0]):
+                row = {
+                    'UID': uid,
+                    'GT': int(target[b].item()),
+                    'NN': int(pred_class[b].item()),
+                }
+                for c, p in enumerate(probs[b].tolist()):
+                    row[f'prob_{c}'] = float(p)
+    
+                results.append(row)
+    
         df = pd.DataFrame(results)
         df.to_csv(results_file, index=False)
+
         logger.info(f"Saved new results.csv to {results_file}")
     else:
         logger.info("Skipping prediction loop; loaded existing results into df.")
@@ -481,46 +503,6 @@ if __name__ == "__main__":
 
 
     elif not get_attention:
-        # df = pd.DataFrame(results)
-        # df.to_csv(path_out/'results.csv', index=False)
-
-
-        # acc = accuracy_score(df['GT'], df['NN'])
-        # logger.info(f"Acc: {acc:.2f}") 
-
-        # #  -------------------------- Confusion Matrix -------------------------
-        # cm = confusion_matrix(df['GT'], df['NN'])
-        # tn, fp, fn, tp = cm.ravel()
-        # n = len(df)
-        # logger.info("Confusion Matrix: TN {} ({:.2f}%), FP {} ({:.2f}%), FN {} ({:.2f}%), TP {} ({:.2f}%)".format(tn, tn/n*100, fp, fp/n*100, fn, fn/n*100, tp, tp/n*100 ))
-
-        
-        # # ------------------------------- ROC-AUC ---------------------------------
-        # fig, axis = plt.subplots(ncols=1, nrows=1, figsize=(6,6)) 
-        # y_pred_lab = np.asarray(df['NN_pred'])
-        # y_true_lab = np.asarray(df['GT'])
-        # tprs, fprs, auc_val, thrs, opt_idx, cm = plot_roc_curve(y_true_lab, y_pred_lab, axis, fontdict=fontdict)
-        # fig.tight_layout()
-        # fig.savefig(path_out/f'roc.png', dpi=300)
-        # logger.info("AUC {:.2f}".format(auc_val))
-
-
-        # #  -------------------------- Confusion Matrix -------------------------
-        # acc = cm2acc(cm)
-        # _,_, sens, spec = cm2x(cm)
-        # df_cm = pd.DataFrame(data=cm, columns=['False', 'True'], index=['False', 'True'])
-        # fig, axis = plt.subplots(1, 1, figsize=(4,4))
-        # sns.heatmap(df_cm, ax=axis, cbar=False, fmt='d', annot=True) 
-        # axis.set_title(f'Confusion Matrix ACC={acc:.2f}', fontdict=fontdict) # CM =  [[TN, FP], [FN, TP]] 
-        # axis.set_xlabel('Prediction' , fontdict=fontdict)
-        # axis.set_ylabel('True' , fontdict=fontdict)
-        # fig.tight_layout()
-        # fig.savefig(path_out/f'confusion_matrix.png', dpi=300)
-
-        # logger.info(f"Malign  Objects: {np.sum(y_true_lab)}")
-        # logger.info("Confusion Matrix {}".format(cm))
-        # logger.info("Sensitivity {:.2f}".format(sens))
-        # logger.info("Specificity {:.2f}".format(spec))
 
         df = pd.DataFrame(results)
         df.to_csv(path_out/'results.csv', index=False)
