@@ -1,56 +1,61 @@
-# Medical Slice Transformer: Improved Diagnosis and Explainability on 3D Medical Images with DINOv2 
+# XAI for Medical Slice Transformer
+by Peachapong Poolpol
 
+## MST – Explainable AI & Faithfulness Evaluation
 
-### Private Data
-* Add your own dataset to [mst/data/datasets](mst/data/datasets)
-* Add your own dataset to `get_dataset()` in [scripts/main_train.py](scripts/main_train.py)  
-
-## Run Training
-### Option A: Use Trained Models
-Skip training and download the weights from [Zenodo](https://doi.org/10.5281/zenodo.14500631).
-### Option B: Train Models
-Run Script: [scripts/main_train.py](scripts/main_train.py)
-* Eg. `python scripts/main_train.py --dataset LIDC --model ResNet`
-* Use `--model` to select:
-    * ResNet = 3D ResNet50, 
-    * ResNetSliceTrans = MST-ResNet, 
-    * DinoV2ClassifierSlice = MST-DINOv2  
-
-## Step 4: Predict & Evaluate Performance
-Run Script: [scripts/main_predict.py](scripts/main_predict.py)
-* Eg. `python scripts/main_predict.py --run_folder LIDC/ResNet`
-* Use `--get_attention` to compute saliency maps
-* Use `--get_segmentation` to compute segmentation masks and DICE score 
-* Use `--use_tta` to enable Test Time Augmentation
-
-
-# Run Attention to get Importance
-
-------------------------
-# MST – Explainable AI & Faithfulness Evaluation
-
-Step 1 - Create Environment from `environment.yaml`
+### Step 1 - Create Environment from `environment.yaml`
 
 ```python
 conda env create -f environment.yaml
 ```
 
-Step 2 - Install `requirements.txt`
+### Step 2 - Install `requirements.txt`
 ```bash
 pip install -r requirement.txt
 ```
 
-Step 3 
+### Step 3 
 ```bash
 pip isntall -e .
 ```
 
-# Train Model
-Run Training Model
-```bash
-python scripts/main_train.py --dataset Local --model DinoV2ClassifierSlice
-```
 
+### Data set
+* Add your ODELIA dataset to [mst/data/datasets/datasets/ODELIA](mst/data/datasets/datasets/ODELIA)
+
+## Run Training
+### Train Models
+Run Script: [scripts/main_train.py](scripts/main_train.py)
+* Eg. `python scripts/main_train.py --dataset ODELIA --model DinoV2ClassifierSlice`
+* Use `--model` to select:
+    * ResNet = 3D ResNet50, 
+    * ResNetSliceTrans = MST-ResNet, 
+    * DinoV2ClassifierSlice = MST-DINOv2  
+
+## Run Predict & Evaluate Performance
+Run Script: [scripts/main_predict.py](scripts/main_predict.py)
+* Eg. `python scripts/main_predict.py --run_folder ODELIA/DinoV2ClassifierSlice_Final --dataset ODELIA --get_attention`
+* Use `--get_attention` to compute saliency maps
+* Use `--get_segmentation` to compute segmentation masks and DICE score 
+* Use `--use_tta` to enable Test Time Augmentation
+
+
+## Run XAI method
+## Run Attention to get Importance
+Run Script: [scripts/run_attention.py](scripts/run_attention.py)
+* Eg. `python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final`
+* Use `-- only_images` to get saliency maps
+* Use `-- max_image_per_class` to set limit of saliency map that you want
+* Eg. `python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final --only_images --max_images_per_class 20`
+
+## Evaluation Test
+### Deletion
+## Run Deletion
+Run Script: [scripts/run_deletion.py](scripts/run_deletion.py)
+* Eg. `python scripts/run_deletion.py   --run_folder ODELIA/DinoV2ClassifierSlice_Final   --xai_method attention --save_curves`
+
+Run Script: [scripts/run_insertion.py](scripts/run_insertion.py)
+* Eg. `python scripts/run_insertion.py   --run_folder ODELIA/DinoV2ClassifierSlice_Final   --xai_method attention --save_curves`
 
 
 This repository extends the MST (Multi-Slice Transformer) framework with explainable AI (XAI) methods and faithfulness evaluation for 3D medical images.
