@@ -134,7 +134,8 @@ mst_xai/
 scripts/
 ├── run_attention.py             # Generate attention saliency
 ├── run_gradcam.py               # Generate Grad-CAM saliency
-└── run_deletion.py              # Evaluate Deletion using saved saliency
+├── run_deletion.py              # Evaluate Deletion using saved saliency
+└── run_insertion.py             # Evaluate Insertion using saved saliency
 ```
 
 ## Running Deletion Evaluation
