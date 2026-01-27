@@ -83,7 +83,6 @@ attn_method = "attention_rollout" if args.use_rollout else "attention"
 path_run = Path(args.run_dir) / run_folder
 results_folder = 'results_tta' if args.use_tta else 'results'
 path_out = Path(args.output_dir) / results_folder / run_folder 
-
 path_out.mkdir(parents=True, exist_ok=True)
 
 attn_root = path_out / attn_method

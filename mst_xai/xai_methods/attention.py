@@ -86,11 +86,14 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # At least one of these must be implemented by the model.
 
         # --------------------------------------------------
-        if self.use_rollout and hasattr(self.model, "get_attention_maps_rollout"):  # NEW
-            attn_spatial = self.model.get_attention_maps_rollout()  # [B, heads, tokens, tokens] - All layers combined
-        else:
-            attn_spatial = self.model.get_attention_maps()  # [B, heads, tokens, tokens] - only last layer
         attn_slice = self.model.get_slice_attention()       # [B, D] # slice attention # From dino.py
+        
+        if self.use_rollout:  # NEW
+            attn_maps = self.model.attention_maps  # rall, from all layers
+            attn_spatial = self._attention_rollout(attn_maps)  # [B, N] - rollout across layers
+            attn_spatial = attn_spatial * attn_slice # combine spatial and slice attention
+        else:
+            attn_spatial = self.model.get_attention_maps()  # [B, heads, tokens, tokens] - only last layer (already combined with slice attention in dino.py)
     
         if attn_spatial is None and attn_slice is None:
             raise RuntimeError("No attention maps found. Did you pass save_attn=True?")
@@ -196,6 +199,19 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         overlay = np.clip(overlay, 0, 1)
 
         return overlay
+    
+    def _attention_rollout(self, attn_maps):
+        rollout = None
+        for attn in attn_maps:
+            # attn: [B, Heads, Tokens, Tokens]
+            attn = attn.mean(dim=1)
+            # Add residual connection
+            I = torch.eye(attn.size(-1), device=attn.device)
+            attn = attn + I
+            # Normalize
+            attn = attn / attn.sum(dim=-1, keepdim=True)
+            rollout = attn if rollout is None else attn @ rollout
+        return rollout[:, 0, 1:]  # CLS → patch attention # [B, HW]
 
 
     # --------------------------------------------------
