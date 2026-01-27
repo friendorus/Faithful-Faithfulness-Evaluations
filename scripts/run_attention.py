@@ -78,13 +78,15 @@ def concat_input_overlay(input_2d, overlay_rgb):
 run_folder = Path(args.run_folder)
 dataset = run_folder.parent.name
 model_name = run_folder.name.split('_', 1)[0]
+attn_method = "attention_rollout" if args.use_rollout else "attention"
 
 path_run = Path(args.run_dir) / run_folder
 results_folder = 'results_tta' if args.use_tta else 'results'
-path_out = Path(args.output_dir) / results_folder / run_folder
+path_out = Path(args.output_dir) / results_folder / run_folder 
+
 path_out.mkdir(parents=True, exist_ok=True)
 
-attn_root = path_out / 'attention'
+attn_root = path_out / attn_method
 attn_root.mkdir(parents=True, exist_ok=True)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -171,7 +173,7 @@ for idx in tqdm(
             "UID": uid,
             "dataset": dataset,
             "model": model_name,
-            "xai_method": f"attention_{args.mode}",
+            "xai_method": f"{attn_method}_{args.mode}",
             "class": gt,
             "mean_importance": float(sal_np.mean()),
             "max_importance": float(sal_np.max()),
@@ -197,7 +199,7 @@ for idx in tqdm(
 
         save_image(
             saliency[mid].unsqueeze(0),
-            image_dir / f"attention_{uid}.png",
+            image_dir / f"{attn_method}_{uid}.png",
             normalize=True
         )
 
@@ -225,6 +227,6 @@ for idx in tqdm(
 if not args.only_images:
     df = pd.DataFrame(importance_rows)
     df.to_csv(
-        attn_root / f"attention_{args.mode}_summary.csv",
+        attn_root / f"{attn_method}_{args.mode}_summary.csv",
         index=False
     )

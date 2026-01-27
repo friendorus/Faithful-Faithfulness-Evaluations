@@ -67,20 +67,35 @@ Run Script: [scripts/run_attention.py](scripts/run_attention.py)
 Outputs:
 ```bash
 results/
-└── ODELIA/DinoV2ClassifierSlice_Final/attention
-    ├── attention_spatial_summary.csv
-    ├── class_0
-    │   ├── image/
-    │   ├── npy/
-    │   ├── py/
-    ├── class_1
-    │   ├── image/
-    │   ├── npy/
-    │   ├── py/
-    ├── class_2
-    │   ├── image/
-    │   ├── npy/
-    │   ├── py/
+└── ODELIA/DinoV2ClassifierSlice_Final/
+    ├── attention/
+        ├── attention_spatial_summary.csv
+        ├── class_0
+        │   ├── image/
+        │   ├── npy/
+        │   ├── py/
+        ├── class_1
+        │   ├── image/
+        │   ├── npy/
+        │   ├── py/
+        ├── class_2
+        │   ├── image/
+        │   ├── npy/
+        │   ├── py/
+    ── attention_rollout/
+        ├── attention_rollout_spatial_summary.csv
+        ├── class_0
+        │   ├── image/
+        │   ├── npy/
+        │   ├── py/
+        ├── class_1
+        │   ├── image/
+        │   ├── npy/
+        │   ├── py/
+        ├── class_2
+        │   ├── image/
+        │   ├── npy/
+        │   ├── py/
 ```
 
 ## Evaluation Test
