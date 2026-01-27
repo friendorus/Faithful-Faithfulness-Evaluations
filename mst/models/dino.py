@@ -189,13 +189,24 @@ class DinoV2ClassifierSlice(BasicClassifier):
         attention_map_dino /= attention_map_dino.sum(dim=-1, keepdim=True)
         return attention_map_dino
 
-    def get_attention_maps(self):
+    def get_attention_maps(self): # Combined attention map
+        """ Calculate the combined attention map from slice attention and plane attention (only last attention layer). """
         attention_map_dino = self.get_plane_attention()
         attention_map_slice = self.get_slice_attention()
         
         attention_map = attention_map_slice*attention_map_dino
         return attention_map
     
+    def get_attention_maps_rollout(self): # Combined attention map using rollout
+        """ Calculate the combined attention map from slice attention and plane attention using rollout. """
+        attention_map_dino = self.get_attention_rollout()  # NEW
+        attention_map_slice = self.get_slice_attention()
+
+        # Combine slice and spatial attention
+        attention_map = attention_map_slice * attention_map_dino
+        return attention_map
+
+
     def get_attention_cls(self):
         """ Calculate the attention in the first layer starting from the CLS token in the last layer. """
         attention_to_cls = self.attention_maps[-1]
@@ -205,6 +216,36 @@ class DinoV2ClassifierSlice(BasicClassifier):
         
         # The attention to the first layer from the CLS token
         return attention_to_cls
+    
+    def get_attention_rollout(self): ## New - true attention rollout
+        """
+        True attention rollout across all DINO encoder layers.
+        Returns CLS-to-patch rollout attention.
+        """
+        assert len(self.attention_maps) > 0, "No attention maps stored"
+
+        # Start with identity
+        rollout = None
+
+        for attn in self.attention_maps:
+            # attn: [B, Heads, Tokens, Tokens]
+            attn = attn.mean(dim=1)  # head average → [B, T, T]
+
+            # Add residual connection
+            I = torch.eye(attn.size(-1), device=attn.device)
+            attn = attn + I
+
+            # Normalize
+            attn = attn / attn.sum(dim=-1, keepdim=True)
+
+            rollout = attn if rollout is None else torch.matmul(attn, rollout)
+
+        # CLS → patch attention
+        rollout = rollout[:, 0, 1:]  # [B, HW]
+
+        return rollout
+
+
     
     def register_hooks(self):
         def enable_attention(module):
