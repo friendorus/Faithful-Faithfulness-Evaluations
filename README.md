@@ -35,7 +35,10 @@ Run Script: [scripts/main_train.py](scripts/main_train.py)
 
 ## Run Predict & Evaluate Performance
 Run Script: [scripts/main_predict.py](scripts/main_predict.py)
-* Eg. `python scripts/main_predict.py --run_folder ODELIA/DinoV2ClassifierSlice_Final --dataset ODELIA --get_attention`
+```bash
+python scripts/main_predict.py --run_folder ODELIA/DinoV2ClassifierSlice_Final --dataset ODELIA --get_attention --use_tta
+```
+
 * Use `--get_attention` to compute saliency maps
 * Use `--get_segmentation` to compute segmentation masks and DICE score 
 * Use `--use_tta` to enable Test Time Augmentation

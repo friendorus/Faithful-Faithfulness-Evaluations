@@ -103,10 +103,6 @@ class DinoV2ClassifierSlice(BasicClassifier):
         self.linear = nn.Linear(emb_ch, out_ch) if enable_linear else nn.Identity()
 
 
-
-        
-
-
     def forward(self, source, save_attn=False, src_key_padding_mask=None, **kwargs):   
 
         if save_attn:
@@ -168,9 +164,6 @@ class DinoV2ClassifierSlice(BasicClassifier):
         x = self.linear(x) 
         return x
     
-
-
-
     
     def get_slice_attention(self):
         attention_map_slice = self.attention_maps_slice[-1] # [B, Heads, 1+D(+regs), 1+D(+regs)]
@@ -189,7 +182,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
         return attention_map_slice
 
     def get_plane_attention(self):
-        attention_map_dino = self.attention_maps[-1] # [B*D, Heads, 1+HW, 1+HW]
+        attention_map_dino = self.attention_maps[-1] # [B*D, Heads, 1+HW, 1+HW] #[-1] = Last Transformer Layer
         img_slice = slice(5, None) if self.use_registers else slice(1, None) # see https://github.com/facebookresearch/dinov2/blob/e1277af2ba9496fbadf7aec6eba56e8d882d1e35/dinov2/models/vision_transformer.py#L264 
         attention_map_dino = attention_map_dino[:,:, 0, img_slice] # [B*D, Heads, HW]
         attention_map_dino[:,:,0] = 0
