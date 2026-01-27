@@ -24,14 +24,19 @@ from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
 # ============================================================
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--run_dir', default='./runs', type=str)
-parser.add_argument('--run_folder', required=True, type=str)
-parser.add_argument('--output_dir', default='./', type=str)
-parser.add_argument('--use_tta', action='store_true')
-parser.add_argument('--mode', default='spatial', choices=['spatial', 'slice'])
-parser.add_argument('--max_importance', type=int, default=-1)
-parser.add_argument('--max_images_per_class', type=int, default=5)
-parser.add_argument('--only_images', action='store_true')
+parser.add_argument('--run_dir', default='./runs', type=str) # Root runs directory
+parser.add_argument('--run_folder', required=True, type=str) # e.g., 'DINOv2ClassifierSlice_odelia_experiment1'
+parser.add_argument('--output_dir', default='./', type=str) # Root output directory
+parser.add_argument('--use_tta', action='store_true') # If set, uses TTA results
+parser.add_argument('--mode', default='spatial', choices=['spatial', 'slice']) # Attention mode
+parser.add_argument('--use_rollout', action='store_true',
+                    help="If set, uses attention rollout for spatial attention instead of only the last layer")
+parser.add_argument('--max_importance', type=int, default=-1, 
+                    help="Maximum number of input images to save importance scores(-1 for no limit)")
+parser.add_argument('--max_images_per_class', type=int, default=5, 
+                    help="Maximum number of images to save per class")
+parser.add_argument('--only_images', action='store_true', 
+                    help="If set, only saves images, not importance scores")
 args = parser.parse_args()
 
 
@@ -96,7 +101,9 @@ MAX_IMG = args.max_images_per_class
 model = DinoV2ClassifierSlice.load_best_checkpoint(path_run)
 model.to(device).eval()
 
-xai = Attention_MST(model, mode=args.mode)
+xai = Attention_MST(model, 
+                    mode=args.mode,
+                    use_rollout=args.use_rollout)
 ds_test = get_dataset(dataset, split='test')
 labels = ds_test.df[ds_test.LABEL].values
 

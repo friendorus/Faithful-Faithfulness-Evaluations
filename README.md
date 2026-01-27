@@ -55,11 +55,14 @@ results/
 
 ## Run XAI method
 ## Run Attention to get Importance
+
 Run Script: [scripts/run_attention.py](scripts/run_attention.py)
 * Eg. `python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final`
-* Use `-- only_images` to get saliency maps
-* Use `-- max_image_per_class` to set limit of saliency map that you want
+* Use `--only_images` to get saliency maps
+* Use `--max_image_per_class` to set limit of saliency map that you want
+* Use `--use_rollout` to use attention rollout across all Transformer encoder layers (include slice attention)
 * Eg. `python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final --only_images --max_images_per_class 20`
+* Eg. `python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final --use_rollout`
 
 Outputs:
 ```bash
