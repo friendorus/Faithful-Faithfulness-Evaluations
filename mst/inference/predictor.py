@@ -47,7 +47,7 @@ def load_model(model_name, checkpoint_path, device):
 
     ModelClass = get_model_class(model_name)
 
-    model = ModelClass.load_from_checkpoint(str(checkpoint_path))
+    model = ModelClass.load_best_checkpoint(str(checkpoint_path))
     model.to(device)
     model.eval()
 

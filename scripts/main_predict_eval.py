@@ -14,7 +14,7 @@ def main(args):
 
     model = load_model(
         model_name=model_name,
-        checkpoint_path=args.checkpoint,
+        checkpoint_path=Path(args.run_folder),
         device=device,
     )
 
@@ -38,7 +38,6 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint")
     parser.add_argument("--dataset", type=str, required=True, help="Name of the dataset to use")
     parser.add_argument("--run_folder", type=str, required=True, help="Folder name of the run")
     parser.add_argument("--output_dir", type=str, default="./predictions", help="Directory to save predictions")

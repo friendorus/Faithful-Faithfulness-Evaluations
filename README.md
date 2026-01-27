@@ -57,6 +57,25 @@ results/
     └── roc_multiclass.png
 ```
 
+## Run Predict with new clean file
+Run Script: [scripts/main_predict_eval.py](scripts/main_predict_eval.py)
+### No TTA - Basic Run
+```bash
+python scripts/main_predict_eval.py \
+    --dataset ODELIA \
+    --run_folder runs/ODELIA/DinoV2ClassifierSlice_Final\
+    --output_dir ./predictions
+```
+
+### With TTA
+```bash
+python scripts/main_predict_eval.py \
+    --dataset ODELIA \
+    --run_folder runs/ODELIA/DinoV2ClassifierSlice_Final \
+    --output_dir ./predictions \
+    --use_tta
+```
+
 
 -----------------------------------------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------
