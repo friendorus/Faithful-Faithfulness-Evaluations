@@ -27,7 +27,7 @@ parser.add_argument("--output_dir", default="./", type=str)
 parser.add_argument(
     "--xai_method",
     required=True,
-    choices=["attention", "gradcam", "gmar"],
+    choices=["attention", "attention_rollout", "gradcam", "gmar"],
     help="Which saliency folder to evaluate",
 )
 

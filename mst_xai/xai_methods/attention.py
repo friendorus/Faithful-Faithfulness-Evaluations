@@ -7,14 +7,14 @@ from mst_xai.xai_methods.base import BaseSaliencyMethod
 # Import supported MST model architectures.
 # This XAI method is designed to work with both CNN-based (ResNet)
 # and Transformer-based (DINOv2) models that expose attention via
-# get_attention_maps() and/or get_slice_attention().
+# get_attention_maps() and/or get_slice_attention(). or create attention_rollout().
 # The imports define the intended scope of compatible models rather
 # than being used explicitly in this file.
 from mst.models.resnet import ResNet, ResNetSliceTrans
 from mst.models.dino import DinoV2ClassifierSlice
 
 
-class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch)
+class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch) or Attention Rollout_MST
     """
     Attention-based saliency for MST-style models.
 
