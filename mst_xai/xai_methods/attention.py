@@ -21,12 +21,16 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
     This method extracts attention weights stored during the forward pass
     and converts them into saliency maps. Depending on the mode, it produces:
     - spatial saliency maps based on CLS-to-patch attention (ViT-style models)
+        # Select between last-layer attention and attention rollout.
+        # Attention rollout propagates attention across all Transformer encoder layers
+        # while the default uses only the final layer.
     - slice-level importance scores based on slice-attention mechanisms
 
     Args:
         model: Transformer-based MST model with attention layers
         mode: "spatial" produces [D, H, W], "slice" produces [D]
         resize_to_input: If True, upsamples spatial saliency to input resolution
+        use_rollout: If True, uses attention rollout for spatial attention (default: False)
 
     Produces:
     - Spatial attention saliency aligned to input volume [D, H, W]
@@ -38,11 +42,13 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         model,
         mode: str = "spatial",   # "spatial" or "slice"
         resize_to_input: bool = True,
+        use_rollout: bool = False,  # NEW
     ):
         super().__init__(model)
         assert mode in ["spatial", "slice"]
         self.mode = mode
         self.resize_to_input = resize_to_input
+        self.use_rollout = use_rollout  # NEW
 
     # --------------------------------------------------
     # Core Attention Saliency
@@ -80,7 +86,10 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # At least one of these must be implemented by the model.
 
         # --------------------------------------------------
-        attn_spatial = self.model.get_attention_maps()      # [B, heads, tokens, tokens] # CLS-to-patch # From dino.py
+        if self.use_rollout and hasattr(self.model, "get_attention_maps_rollout"):  # NEW
+            attn_spatial = self.model.get_attention_maps_rollout()  # [B, heads, tokens, tokens] - All layers combined
+        else:
+            attn_spatial = self.model.get_attention_maps()  # [B, heads, tokens, tokens] - only last layer
         attn_slice = self.model.get_slice_attention()       # [B, D] # slice attention # From dino.py
     
         if attn_spatial is None and attn_slice is None:
@@ -194,235 +203,6 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
     # --------------------------------------------------
     @staticmethod
     def _normalize(x: torch.Tensor):
-        x = x - x.min()
-        x = x / (x.max() + 1e-8)
-        return x
-
-class AttentionRollout_MST(BaseSaliencyMethod):
-    """
-    Attention Rollout: Aggregates multi-layer attention weights to produce saliency.
-    
-    The rollout method computes the cumulative attention contribution across all
-    transformer layers by multiplying attention matrices layer-by-layer, starting
-    from the input and propagating through to the output.
-    
-    This provides a holistic view of how input tokens contribute to the final
-    classification decision through the entire attention mechanism.
-    
-    References:
-    - Abnar & Zuidema (2020): "Quantifying Attention Flow in Transformers"
-    """
-
-    def __init__(
-        self,
-        model,
-        mode: str = "spatial",  # "spatial" or "slice"
-        use_lrp: bool = False,  # Use Layer-wise Relevance Propagation variant
-        start_layer: int = 0,   # Start rollout from this layer
-    ):
-        """
-        Args:
-            model: Transformer-based model with attention layers
-            mode: "spatial" produces [D, H, W], "slice" produces [D]
-            use_lrp: If True, use LRP-style relevance propagation
-            start_layer: Which layer to start the rollout computation
-        """
-        super().__init__(model)
-        assert mode in ["spatial", "slice"]
-        self.mode = mode
-        self.use_lrp = use_lrp
-        self.start_layer = start_layer
-
-    def generate(self, batch, target_class=None):
-        """
-        Compute attention rollout saliency.
-        
-        Returns:
-            spatial mode -> [D, H, W]
-            slice mode   -> [D]
-        """
-        source = batch["source"].to(self.model.device)
-        src_key_padding_mask = batch.get("src_key_padding_mask", None)
-
-        # Forward pass with attention capture
-        _ = self.model(
-            source,
-            src_key_padding_mask=src_key_padding_mask,
-            save_attn=True,
-            use_softmax=True,
-        )
-
-        # Retrieve attention maps from all layers
-        attn_layers = self.model.get_attention_maps()  # List or tensor of attention maps
-        attn_slice = self.model.get_slice_attention()  # Slice-level attention
-
-        if attn_layers is None:
-            raise RuntimeError("No attention maps found. Did you pass save_attn=True?")
-
-        # --------------------------------------------------
-        # Compute Rollout
-        # --------------------------------------------------
-        if self.mode == "slice":
-            sal = self._compute_slice_rollout(attn_slice)
-        else:
-            sal = self._compute_spatial_rollout(attn_layers, source)
-
-        # --------------------------------------------------
-        # Normalize
-        # --------------------------------------------------
-        sal = sal - sal.min()
-        sal = sal / (sal.max() + 1e-8)
-
-        return sal.detach()
-
-    def _compute_spatial_rollout(self, attn_layers, source):
-        """
-        Compute spatial attention rollout by aggregating multi-layer attention.
-        
-        Args:
-            attn_layers: Attention maps from transformer layers
-            source: Input tensor [B, C, D, H, W]
-            
-        Returns:
-            Rollout saliency [D, H, W]
-        """
-        B, C, D, H, W = source.shape
-        
-        # Handle different attention tensor formats
-        if isinstance(attn_layers, torch.Tensor):
-            if attn_layers.dim() == 4:
-                # Already in format [B, heads, N, N]
-                attn_maps = [attn_layers]
-            else:
-                attn_maps = [attn_layers]
-        elif isinstance(attn_layers, list):
-            attn_maps = attn_layers
-        else:
-            raise TypeError(f"Unexpected attention format: {type(attn_layers)}")
-
-        # Start with identity (each token attends to itself)
-        rollout = torch.eye(attn_maps[0].shape[-1], device=attn_maps[0].device)
-        rollout = rollout.unsqueeze(0)  # [1, N, N]
-
-        # Accumulate attention across layers
-        for i, attn in enumerate(attn_maps[self.start_layer:], start=self.start_layer):
-            if attn.dim() == 4:
-                # [B, heads, N, N] -> average over heads -> [B, N, N]
-                attn_mean = attn.mean(dim=1)
-            else:
-                attn_mean = attn
-
-            # Add residual connection (token attends to itself)
-            if self.use_lrp:
-                attn_mean = attn_mean + torch.eye(
-                    attn_mean.shape[-1], device=attn_mean.device
-                ).unsqueeze(0)
-
-            # Multiply rollout by current layer attention
-            rollout = torch.matmul(attn_mean, rollout)
-
-        # Extract CLS token attention to all patches
-        cls_rollout = rollout[0, 0, 1:]  # Skip CLS token itself, [N_patches]
-
-        # Reshape to spatial grid
-        patch_size = self.model.encoder.patch_embed.patch_size
-        if isinstance(patch_size, tuple):
-            patch_size = patch_size[0]
-
-        H_p = H // patch_size
-        W_p = W // patch_size
-        N_expected = H_p * W_p
-
-        if cls_rollout.shape[0] != N_expected:
-            raise RuntimeError(
-                f"Patch count mismatch: expected {N_expected}, got {cls_rollout.shape[0]}"
-            )
-
-        # Reshape to 2D spatial grid
-        sal_2d = cls_rollout.reshape(H_p, W_p)
-
-        # Upsample to original resolution
-        sal_2d = F.interpolate(
-            sal_2d.unsqueeze(0).unsqueeze(0),
-            size=(H, W),
-            mode="bilinear",
-            align_corners=False,
-        )[0, 0]
-
-        # Broadcast across slices
-        sal = sal_2d.unsqueeze(0).repeat(D, 1, 1)  # [D, H, W]
-
-        return sal
-
-    def _compute_slice_rollout(self, attn_slice):
-        """
-        Compute slice-level attention rollout.
-        
-        Args:
-            attn_slice: Slice attention tensor [B, D]
-            
-        Returns:
-            Rollout saliency [D]
-        """
-        if attn_slice is None:
-            raise RuntimeError("Slice attention not available")
-
-        # Normalize across slices
-        sal = attn_slice[0]  # Take first batch element
-
-        return sal
-
-    def visualize(
-        self,
-        image: torch.Tensor,
-        saliency: torch.Tensor,
-        alpha: float = 0.5,
-        slice_idx: int | None = None,
-    ):
-        """
-        Visualize attention rollout as overlay on input image.
-        
-        Args:
-            image: Input image [1, D, H, W] or [D, H, W]
-            saliency: Computed saliency map [D, H, W] or [D]
-            alpha: Blending factor for overlay
-            slice_idx: Which slice to visualize (auto-selected if None)
-            
-        Returns:
-            overlay (numpy array) or (saliency, slice_idx) for slice mode
-        """
-        if image.dim() == 4:
-            img = image.squeeze(0).detach().cpu().numpy()
-        else:
-            img = image.detach().cpu().numpy()
-
-        sal = saliency.detach().cpu().numpy()
-
-        if self.mode == "slice":
-            if slice_idx is None:
-                slice_idx = sal.argmax()
-            return sal, slice_idx
-
-        # Spatial mode: overlay on selected slice
-        if slice_idx is None:
-            slice_scores = sal.reshape(sal.shape[0], -1).sum(axis=1)
-            slice_idx = slice_scores.argmax()
-
-        img_slice = img[slice_idx]
-        sal_slice = sal[slice_idx]
-
-        # Normalize saliency
-        sal_slice = (sal_slice - sal_slice.min()) / (sal_slice.max() + 1e-8)
-
-        # Blend
-        overlay = (1 - alpha) * img_slice + alpha * sal_slice
-        overlay = np.clip(overlay, 0, 1)
-
-        return overlay
-
-    @staticmethod
-    def _normalize(x: torch.Tensor):
-        """Normalize tensor to [0, 1]."""
         x = x - x.min()
         x = x / (x.max() + 1e-8)
         return x
