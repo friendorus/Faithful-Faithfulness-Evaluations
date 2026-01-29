@@ -8,12 +8,10 @@ def perturbation_evaluation(
     model,
     batch,
     saliency,                 # torch.Tensor [D, H, W]
-    target_class: int,
     predicted_class: int,
     patch_size: int,
     steps: int,                 # How often that process will be evaluated" - 20 mean every 5%
     mode: str,                # "deletion" | "insertion" | "negative"
-    confidence_calculation_mode: str, # "GroundTruth" | "Predicted"
     baseline: str = "zero",  # "zero" | "mean" | "zero_conf"
     reference_source: torch.Tensor | None = None,
 ):
@@ -31,8 +29,6 @@ def perturbation_evaluation(
                 batch["source"] : [1, C, D, H, W]
         saliency : torch.Tensor
             Saliency map [D, H, W]
-        target_class : int
-            Ground Truth Class index to track confidence if want to track on GT
         predicted_class : int
             Class that was predicted by the model
         patch_size : int
@@ -41,8 +37,6 @@ def perturbation_evaluation(
             Number of add/remove steps - standard is 20
         mode : str
             Mode to use for evaluation [Deletion, Insertion or Negative (Perturbation)]
-        confidence_calculation_mode: str
-            What is the mode to use for confidence calculation
         baseline : str
             How to method to replace patches or being initial image
         reference_source : torch.Tensor
@@ -138,16 +132,11 @@ def perturbation_evaluation(
                 current[:, :, d, h0:h1, w0:w1] = repl[:, :, d, h0:h1, w0:w1] #replace current area from patch to mask value
 
         logits = model(current)
-        if confidence_calculation_mode == "GroundTruth":
-            prob = torch.softmax(logits, dim=1)[0, target_class]
-        elif confidence_calculation_mode == "Predicted":
-            prob = torch.softmax(logits, dim=1)[0, predicted_class]
-        else:
-            raise ValueError(f"Unknown what is the class to calculate confidence")
+        prob = torch.softmax(logits, dim=1)[0, predicted_class]
 
         confidences.append(prob.item())
         percentages.append(step / steps)
 
     auc_score = auc(percentages, confidences)
 
-    return percentages, confidences, auc_score, confidence_calculation_mode
+    return percentages, confidences, auc_score
