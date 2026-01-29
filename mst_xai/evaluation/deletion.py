@@ -1,126 +1,135 @@
-import torch
-import torch.nn.functional as F
-import numpy as np
-from sklearn.metrics import auc
+from mst_xai.evaluation.perturbation_core_code.perturbation_core import perturbation_evaluation
 
 
-@torch.no_grad()
-def deletion_evaluation(
-    model,
-    batch,
-    saliency,                 # torch.Tensor [D, H, W]
-    target_class: int,
-    patch_size: int,
-    steps: int = 20,
-    replacement: str = "zero",   # "zero" | "mean" | "zero_conf"
-    reference_source: torch.Tensor | None = None,
-):
-    if replacement == "zero_conf":
-        assert reference_source is not None, \
-            "reference_source required for zero_conf replacement"
+def deletion_evaluation(**kwargs):
+    return perturbation_evaluation(mode="deletion", **kwargs)
 
-    """
-    Deletion faithfulness evaluation ***(patch-level).
+# --------
+# Move code below to reuse all in deltion, insertion and NPT
+# --------
+# import torch
+# import torch.nn.functional as F
+# import numpy as np
+# from sklearn.metrics import auc
 
-    Parameters
-    ----------
-    model : torch.nn.Module
-        Trained MST model
-    batch : dict
-        Must contain:
-            batch["source"] : [1, C, D, H, W]
-    saliency : torch.Tensor
-        Saliency map [D, H, W]
-    target_class : int
-        Class index to track confidence
-    patch_size : int
-        ViT patch size (e.g. 14 or 16)
-    steps : int
-        Number of deletion steps
-    replacement : str
-        How to replace deleted patches
 
-    Returns
-    -------
-    percentages : list[float]
-        Fraction of patches deleted
-    confidences : list[float]
-        Model confidence for target_class
-    auc_score : float
-        Area under deletion curve
-    """
+# @torch.no_grad()
+# def deletion_evaluation(
+#     model,
+#     batch,
+#     saliency,                 # torch.Tensor [D, H, W]
+#     target_class: int,
+#     patch_size: int,
+#     steps: int = 20,
+#     replacement: str = "zero",   # "zero" | "mean" | "zero_conf"
+#     reference_source: torch.Tensor | None = None,
+# ):
+#     if replacement == "zero_conf":
+#         assert reference_source is not None, \
+#             "reference_source required for zero_conf replacement"
 
-    device = batch["source"].device
-    source = batch["source"].clone()  # [1, C, D, H, W]
+#     """
+#     Deletion faithfulness evaluation ***(patch-level).
 
-    B, C, D, H, W = source.shape
-    assert B == 1, "Deletion expects batch size = 1"
+#     Parameters
+#     ----------
+#     model : torch.nn.Module
+#         Trained MST model
+#     batch : dict
+#         Must contain:
+#             batch["source"] : [1, C, D, H, W]
+#     saliency : torch.Tensor
+#         Saliency map [D, H, W]
+#     target_class : int
+#         Class index to track confidence
+#     patch_size : int
+#         ViT patch size (e.g. 14 or 16)
+#     steps : int
+#         Number of deletion steps
+#     replacement : str
+#         How to replace deleted patches
 
-    # --------------------------------------------------
-    # 1. Downsample saliency to PATCH GRID (2D per slice)
-    # --------------------------------------------------
-    H_p = H // patch_size
-    W_p = W // patch_size
+#     Returns
+#     -------
+#     percentages : list[float]
+#         Fraction of patches deleted
+#     confidences : list[float]
+#         Model confidence for target_class
+#     auc_score : float
+#         Area under deletion curve
+#     """
 
-    sal_patch = F.interpolate(
-        saliency.unsqueeze(0).unsqueeze(0),  # [1,1,D,H,W]
-        size=(D, H_p, W_p),
-        mode="trilinear",
-        align_corners=False
-    )[0, 0]  # [D, H_p, W_p]
+#     device = batch["source"].device
+#     source = batch["source"].clone()  # [1, C, D, H, W]
 
-    # --------------------------------------------------
-    # 2. Rank patches by importance
-    # --------------------------------------------------
-    flat_sal = sal_patch.flatten()          # [D*H_p*W_p]
-    order = torch.argsort(flat_sal, descending=True)
+#     B, C, D, H, W = source.shape
+#     assert B == 1, "Deletion expects batch size = 1"
 
-    total_patches = flat_sal.numel()
+#     # --------------------------------------------------
+#     # 1. Downsample saliency to PATCH GRID (2D per slice)
+#     # --------------------------------------------------
+#     H_p = H // patch_size
+#     W_p = W // patch_size
 
-    # --------------------------------------------------
-    # 3. Replacement tensor
-    # --------------------------------------------------
-    if replacement == "zero": # Blackening
-        repl = torch.zeros_like(source)
-    elif replacement == "mean": # Global mean from the image input
-        repl = source.mean() * torch.ones_like(source)
-    elif replacement == "zero_conf": # Rplace with reference patch that have zero confidence
-        repl = reference_source.clone()
-    else:
-        raise ValueError(f"Unknown replacement: {replacement}")
+#     sal_patch = F.interpolate(
+#         saliency.unsqueeze(0).unsqueeze(0),  # [1,1,D,H,W]
+#         size=(D, H_p, W_p),
+#         mode="trilinear",
+#         align_corners=False
+#     )[0, 0]  # [D, H_p, W_p]
 
-    # --------------------------------------------------
-    # 4. Deletion loop
-    # --------------------------------------------------
-    confidences = []
-    percentages = []
+#     # --------------------------------------------------
+#     # 2. Rank patches by importance
+#     # --------------------------------------------------
+#     flat_sal = sal_patch.flatten()          # [D*H_p*W_p]
+#     order = torch.argsort(flat_sal, descending=True)
 
-    for step in range(steps + 1):
-        k = int(step / steps * total_patches)
-        mask_idx = order[:k]
+#     total_patches = flat_sal.numel()
 
-        masked = source.clone()
+#     # --------------------------------------------------
+#     # 3. Replacement tensor
+#     # --------------------------------------------------
+#     if replacement == "zero": # Blackening
+#         repl = torch.zeros_like(source)
+#     elif replacement == "mean": # Global mean from the image input
+#         repl = source.mean() * torch.ones_like(source)
+#     elif replacement == "zero_conf": # Rplace with reference patch that have zero confidence
+#         repl = reference_source.clone()
+#     else:
+#         raise ValueError(f"Unknown replacement: {replacement}")
 
-        for idx in mask_idx:
-            d = idx // (H_p * W_p)
-            hw = idx % (H_p * W_p)
-            h = hw // W_p
-            w = hw % W_p
+#     # --------------------------------------------------
+#     # 4. Deletion loop
+#     # --------------------------------------------------
+#     confidences = []
+#     percentages = []
 
-            h0, h1 = h * patch_size, (h + 1) * patch_size
-            w0, w1 = w * patch_size, (w + 1) * patch_size
+#     for step in range(steps + 1):
+#         k = int(step / steps * total_patches)
+#         mask_idx = order[:k]
 
-            masked[:, :, d, h0:h1, w0:w1] = repl[:, :, d, h0:h1, w0:w1]
+#         masked = source.clone()
 
-        logits = model(masked)
-        prob = torch.softmax(logits, dim=1)[0, target_class]
+#         for idx in mask_idx:
+#             d = idx // (H_p * W_p)
+#             hw = idx % (H_p * W_p)
+#             h = hw // W_p
+#             w = hw % W_p
 
-        confidences.append(prob.item())
-        percentages.append(step / steps)
+#             h0, h1 = h * patch_size, (h + 1) * patch_size
+#             w0, w1 = w * patch_size, (w + 1) * patch_size
 
-    # --------------------------------------------------
-    # 5. AUC (lower = better faithfulness)
-    # --------------------------------------------------
-    auc_score = auc(percentages, confidences)
+#             masked[:, :, d, h0:h1, w0:w1] = repl[:, :, d, h0:h1, w0:w1]
 
-    return percentages, confidences, auc_score
+#         logits = model(masked)
+#         prob = torch.softmax(logits, dim=1)[0, target_class]
+
+#         confidences.append(prob.item())
+#         percentages.append(step / steps)
+
+#     # --------------------------------------------------
+#     # 5. AUC (lower = better faithfulness)
+#     # --------------------------------------------------
+#     auc_score = auc(percentages, confidences)
+
+#     return percentages, confidences, auc_score
