@@ -40,7 +40,8 @@ Run Script: [scripts/main_predict.py](scripts/main_predict.py)
 python scripts/main_predict.py  \
     --run_folder ODELIA/DinoV2ClassifierSlice_Final \
     --dataset ODELIA  \
-    --get_attention --use_tta
+    --get_attention  \
+    --use_tta
 ```
 
 * Use `--get_attention` to compute saliency maps
