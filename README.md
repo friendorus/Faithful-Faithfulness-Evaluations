@@ -117,10 +117,10 @@ python run_perturbation_evaluation.py \
   --save_curves
 ```
 * Use "--mode" with choices for `deletion`, `insertion`, `negative` or `all`
-`deletion` is for Deletion: Initail image is original image and replace from highest importance-scored patch to lowest
-`insertion` is for Insertion: Initial image is blank image and replace from highest importance-scored patch to lowest
-`negative` is for Negative Perturbation test: Initial image is original image and replace from *lowest* importance-scored patch to highest
-`all` is for all methods.
+* -> `deletion` is for Deletion: Initail image is original image and replace from highest importance-scored patch to lowest
+* ->`insertion` is for Insertion: Initial image is blank image and replace from highest importance-scored patch to lowest
+* ->`negative` is for Negative Perturbation test: Initial image is original image and replace from *lowest* importance-scored patch to highest
+* ->`all` is for all methods.
 
 Outputs:
 ```bash
