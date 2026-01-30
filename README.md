@@ -69,7 +69,10 @@ Run Script: [scripts/run_attention.py](scripts/run_attention.py)
 * Use `--use_rollout` to use attention rollout across all Transformer encoder layers (include slice attention)
 * Eg. 
 ``` bash
-python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final --only_images --max_images_per_class 20
+python scripts/run_attention.py \
+    --run_folder ODELIA/DinoV2ClassifierSlice_Final \
+    --only_images \
+    --max_images_per_class 20
 ```
 OR
 ``` bash
