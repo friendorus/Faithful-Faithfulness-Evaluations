@@ -1,4 +1,4 @@
-from mst_xai.evaluation.perturbation_core_code.perturbation_core import perturbation_evaluation
+from mst_xai.evaluation_methods.perturbation_core_code.perturbation_core import perturbation_evaluation
 
 
 def deletion_evaluation(**kwargs):

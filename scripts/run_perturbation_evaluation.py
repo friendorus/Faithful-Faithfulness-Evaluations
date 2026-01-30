@@ -119,15 +119,15 @@ else:
 
 for mode in modes:
     if mode == "deletion":
-        from mst_xai.evaluation.deletion import deletion_evaluation
+        from mst_xai.evaluation_methods.deletion import deletion_evaluation
         eval_fn = deletion_evaluation
 
     elif mode == "insertion":
-        from mst_xai.evaluation.insertion import insertion_evaluation
+        from mst_xai.evaluation_methods.insertion import insertion_evaluation
         eval_fn = insertion_evaluation
 
     elif mode == "negative":
-        from mst_xai.evaluation.negative_perturbation import negative_perturbation_evaluation
+        from mst_xai.evaluation_methods.negative_perturbation import negative_perturbation_evaluation
         eval_fn = negative_perturbation_evaluation
 
 
@@ -183,6 +183,10 @@ for mode in modes:
             steps=args.steps,
             baseline=args.baseline,
         )
+
+        print(f"Predicted class is {predicted_class}")
+        print(f"Progression percentage is {percentages}")
+        print(f"Confidence score is {confidences}")
 
         rows.append({
             "UID": uid,
