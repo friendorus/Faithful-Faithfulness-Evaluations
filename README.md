@@ -24,6 +24,7 @@ pip isntall -e .
 ### Data set
 * Add your ODELIA dataset to [mst/data/datasets/datasets/ODELIA](mst/data/datasets/datasets/ODELIA)
 
+
 ## Run Training
 ### Train Models
 Run Script: [scripts/main_train.py](scripts/main_train.py)
@@ -53,11 +54,12 @@ results/
 ```
 
 
-## Run XAI method
+-----------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------
+# Run XAI method
 ## Run Attention to get Importance
 
 Run Script: [scripts/run_attention.py](scripts/run_attention.py)
-* Eg. `python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final`
 * Use `--only_images` to get saliency maps
 * Use `--max_image_per_class` to set limit of saliency map that you want
 * Use `--use_rollout` to use attention rollout across all Transformer encoder layers (include slice attention)
@@ -69,69 +71,79 @@ Outputs:
 results/
 └── ODELIA/DinoV2ClassifierSlice_Final/
     ├── attention/
-        ├── attention_spatial_summary.csv
-        ├── class_0
-        │   ├── image/
-        │   ├── npy/
-        │   ├── py/
-        ├── class_1
-        │   ├── image/
-        │   ├── npy/
-        │   ├── py/
-        ├── class_2
-        │   ├── image/
-        │   ├── npy/
-        │   ├── py/
-    ── attention_rollout/
+    │   ├── attention_spatial_summary.csv
+    │   ├── class_0
+    │   │   ├── image/
+    │   │   ├── npy/
+    │   │   └── py/
+    │   ├── class_1
+    │   │   ├── image/
+    │   │   ├── npy/
+    │   │   └── py/
+    │   └── class_2
+    │       ├── image/
+    │       ├── npy/
+    │       └── py/
+    └── attention_rollout/
         ├── attention_rollout_spatial_summary.csv
         ├── class_0
         │   ├── image/
         │   ├── npy/
-        │   ├── py/
+        │   └── py/
         ├── class_1
         │   ├── image/
         │   ├── npy/
-        │   ├── py/
-        ├── class_2
-        │   ├── image/
-        │   ├── npy/
-        │   ├── py/
+        │   └── py/
+        └── class_2
+            ├── image/
+            ├── npy/
+            └── py/
 ```
 
 ## Evaluation Test
-### Deletion
-#### Run Deletion
-Run Script: [scripts/run_deletion.py](scripts/run_deletion.py)
-* Eg. `python scripts/run_deletion.py   --run_folder ODELIA/DinoV2ClassifierSlice_Final   --xai_method attention --save_curves`
+Run Script: [scripts/run_perturbation_evaluation.py](scripts/run_perturbation_evaluation.py)
+* Eg.
+```bash
+python run_perturbation_evaluation.py \
+  --run_folder ODELIA/DinoV2ClassifierSlice_Final \
+  --xai_method attention \
+  --mode all \
+  --baseline zero \
+  --steps 20 \
+  --save_curves
+```
+* Use "--mode" with choices for `deletion`, `insertion`, `negative` or `all`
+`deletion` is for Deletion: Initail image is original image and replace from highest importance-scored patch to lowest
+`insertion` is for Insertion: Initial image is blank image and replace from highest importance-scored patch to lowest
+`negative` is for Negative Perturbation test: Initial image is original image and replace from *lowest* importance-scored patch to highest
+`all` is for all methods.
 
 Outputs:
 ```bash
 results/
-└── ODELIA/DinoV2ClassifierSlice_Final/evaluation/deletion
-    ├── deletion_attention.csv
-    ├── deletion_attention_summary.csv
-    └── deletion_curves/attention/ (optional)
+├── ODELIA/DinoV2ClassifierSlice_Final/evaluation/deletion
+│   ├── deletion_attention.csv
+│   ├── deletion_attention_summary.csv
+│   └── deletion_curves/attention/ (optional)
+├── ODELIA/DinoV2ClassifierSlice_Final/evaluation/insertion
+│   ├── insertion_attention.csv
+│   ├── insertion_attention_summary.csv
+│   └── insertion_curves/attention/ (optional)
+└── ODELIA/DinoV2ClassifierSlice_Final/evaluation/negative
+    ├── negative_attention.csv
+    ├── negative_attention_summary.csv
+    └── negative_curves/attention/ (optional)
+    
 ```
 #### Create ROC Curve for Deletion
 Run file [results/ODELIA/DinoV2ClassifierSlice_Final/evaluation/CreateCurve_deletion.ipynb](results/ODELIA/DinoV2ClassifierSlice_Final/evaluation/CreateCurve_deletion.ipynb)
 
-### Insertion
-#### Run Insertion
-Run Script: [scripts/run_insertion.py](scripts/run_insertion.py)
-* Eg. `python scripts/run_insertion.py   --run_folder ODELIA/DinoV2ClassifierSlice_Final   --xai_method attention --save_curves`
-
-Outputs:
-```bash
-results/
-└── ODELIA/DinoV2ClassifierSlice_Final/evaluation/insertion
-    ├── insertion_attention.csv
-    ├── insertion_attention_summary.csv
-    └── insertion_curves/attention/ (optional)
-```
 #### Create ROC Curve for Insertion
 Run file [results/ODELIA/DinoV2ClassifierSlice_Final/evaluation/CreateCurve_insertion.ipynb](results/ODELIA/DinoV2ClassifierSlice_Final/evaluation/CreateCurve_insertion.ipynb)
 
 
+
+---------------------------------------------------------------------------------------------------------------------------------------
 This repository extends the MST (Multi-Slice Transformer) framework with explainable AI (XAI) methods and faithfulness evaluation for 3D medical images.
 The pipeline is designed to be:
 * model-faithful (ViT / patch-based)
@@ -142,34 +154,24 @@ The pipeline is designed to be:
 ```bash
 mst_xai/
 ├── xai_methods/
-│   ├── base.py                  # BaseSaliencyMethod interface
-│   ├── gradcam.py               # Grad-CAM (baseline, not MST-faithful)
-│   └── attention.py             # Attention-based saliency (primary method)
+│   ├── base.py                     # BaseSaliencyMethod interface
+│   ├── gradcam_patch_level.py      # Grad-CAM (baseline, not MST-faithful)
+│   ├── gradcam_slice_level.py 
+│   └── attention.py                # Attention-based saliency (Raw Attnetion OR Attention Rollout)
 │
-├── evaluation/
-│   └── deletion.py              # Deletion faithfulness metric
+├── evaluation_methods/
+│   ├── perturbation_core_code/
+│   │   └── perturbation_core.py    # Core code for perturbation for using Deletion, Insertion and NPT
+│   ├── deletion.py                 # Deletion faithfulness metric
+│   ├── insetion.py                 # Insertion metric
+│   └── negative_perturbation.py    # Negative Perturbation Test (NPT)
 │
 ├── utils/
 │   └── load_saliency.py          # Load .pt / .npy saliency files
 │
 scripts/
-├── run_attention.py             # Generate attention saliency
-├── run_gradcam.py               # Generate Grad-CAM saliency
-├── run_deletion.py              # Evaluate Deletion using saved saliency
-└── run_insertion.py             # Evaluate Insertion using saved saliency
+├── main_train.py            
+├── main_predict.py       
+├── run_attention.py   
+└── run_perturbation_evaluation.py      
 ```
-
-## Running Deletion Evaluation
-python scripts/run_deletion.py \
-  --run_folder Local/DinoV2ClassifierSlice_Final \
-  --xai_method attention \
-  --max_samples 10
-
-
-
-python scripts/run_insertion.py \
-  --run_folder Local/DinoV2ClassifierSlice_Final \
-  --xai_method attention \
-  --steps 20 \
-  --baseline zero \
-  --save_curves
