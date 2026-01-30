@@ -55,26 +55,26 @@ def perturbation_evaluation(
 
     """
 
-    device = batch["source"].device
-    source = batch["source"].clone()  # [1, C, D, H, W]
+    device = batch["source"].device     #ensure all tensors are on the same device (CPU or GPU)
+    source = batch["source"].clone()    # [1, C, D, H, W] # clone () to prevents modifying original input
 
-    B, C, D, H, W = source.shape
+    B, C, D, H, W = source.shape        #[Batch=1, Channels, Depth, Height, Width]
     assert B == 1, "Expect Batch size = 1"
 
     # --------------------------------------------------
-    # 1. Saliency → patch grid
+    # 1. Saliency → patch grid [Convert Voxel-level saliency into patch-level saliency]
     # --------------------------------------------------
     H_p = H // patch_size
     W_p = W // patch_size
 
     sal_patch = F.interpolate(
-        saliency.unsqueeze(0).unsqueeze(0),
-        size=(D, H_p, W_p),
-        mode="trilinear",
+        saliency.unsqueeze(0).unsqueeze(0),     # Downsample saliency to patch resolution
+        size=(D, H_p, W_p),                     # [D, H, W] → [1, 1, D, H, W]
+        mode="trilinear",                       # Trilinear interpolation (for 3D data)
         align_corners=False
     )[0, 0] # [D, H_p, W_p]
 
-    flat_sal = sal_patch.flatten()
+    flat_sal = sal_patch.flatten()              # Change shape [D, H_p, W_p] → [D × H_p × W_p]
 
     # --------------------------------------------------
     # 2. Patch ordering
@@ -86,7 +86,7 @@ def perturbation_evaluation(
     else:
         raise ValueError(f"Unknown mode: {mode}")
 
-    total_patches = flat_sal.numel()
+    total_patches = flat_sal.numel()            # count totla number of patches D × H_p × W_p
 
     # --------------------------------------------------
     # 3. Initial image & replacement
@@ -131,12 +131,18 @@ def perturbation_evaluation(
             else:
                 current[:, :, d, h0:h1, w0:w1] = repl[:, :, d, h0:h1, w0:w1] #replace current area from patch to mask value
 
-        logits = model(current)
-        prob = torch.softmax(logits, dim=1)[0, predicted_class]
+        logits = model(current)         # logits of model from current perturbed input
+        prob = torch.softmax(logits, dim=1)[0, predicted_class] # convert logits into problability and select that prob to the class of choice.
 
-        confidences.append(prob.item())
+        confidences.append(prob.item()) #Count Prob of only that class as confidences
         percentages.append(step / steps)
 
-    auc_score = auc(percentages, confidences)
+    # --------------------------------------------------
+    # 5. Normalization to 0,1 (Realative Confidence)
+    # --------------------------------------------------
+    conf = torch.tensor(confidences)          
+    confidences_normalized = (conf - conf.min()) / (conf.max() - conf.min() + 1e-8)  # Normalize with Max-Min
+    auc_score = auc(percentages, confidences_normalized.tolist())
 
-    return percentages, confidences, auc_score
+    return percentages, confidences, confidences_normalized, auc_score
+
