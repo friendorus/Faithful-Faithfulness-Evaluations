@@ -89,7 +89,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         attn_slice = self.model.get_slice_attention()       # [B, D] # slice attention # From dino.py
         
         if self.use_rollout:  # NEW
-            attn_maps = self.model.attention_maps  # rall, from all layers
+            attn_maps = self.model.attention_maps  # call, from all layers
             attn_spatial = self._attention_rollout(attn_maps)  # [B, N] - rollout across layers
             attn_spatial = attn_spatial * attn_slice # combine spatial and slice attention
         else:
