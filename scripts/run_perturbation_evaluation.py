@@ -184,10 +184,16 @@ for mode in modes:
             baseline=args.baseline,
         )
 
+        predicted_confidences = confidences[:, predicted_class]
+        predicted_confidences_normalized = confidences_normalized[:, predicted_class]
+
         print(f"Predicted class is {predicted_class}")
         print(f"Progression percentage is {percentages}")
         print(f"Confidence score is {confidences}")
         print(f"Normalized Confidence score is {confidences_normalized}")
+        print(f"Predicted class confidence: {predicted_confidences}")
+        print(f"Normalized predicted class confidence: {predicted_confidences_normalized}")
+
 
         rows.append({
             "UID": uid,
@@ -203,9 +209,12 @@ for mode in modes:
             np.save(
                 curve_root / f"{uid}_curve.npy",
                 {
-                    "percentages": percentages,
-                    "confidences": confidences,
-                    "normalized_confidences" : confidences_normalized,
+                    "percentages": np.array(percentages),
+                    "confidences": confidences.cpu().numpy(),
+                    "normalized_confidences" : confidences_normalized.cpu().numpy(),
+                    "predicted_class": predicted_class,
+                    "predicted_confidences": predicted_confidences.cpu().numpy(),
+                    "predicted_normalized_confidences": predicted_confidences_normalized.cpu().numpy(),
                     "auc": auc_score,
                 },
                 allow_pickle=True,
