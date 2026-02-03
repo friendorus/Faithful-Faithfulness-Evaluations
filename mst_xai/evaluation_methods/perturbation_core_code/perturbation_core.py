@@ -113,9 +113,10 @@ def perturbation_evaluation(
     # --------------------------------------------------
     # 4. Perturbation loop
     # --------------------------------------------------
+    prev_k = 0
     for step in range(steps + 1):
         k = int(step / steps * total_patches)
-        idxs = order[:k]
+        idxs = order[prev_k:k]
 
         for idx in idxs:
             d = idx // (H_p * W_p)
@@ -132,17 +133,32 @@ def perturbation_evaluation(
                 current[:, :, d, h0:h1, w0:w1] = repl[:, :, d, h0:h1, w0:w1] #replace current area from patch to mask value
 
         logits = model(current)         # logits of model from current perturbed input
-        prob = torch.softmax(logits, dim=1)[0, predicted_class] # convert logits into problability and select that prob to the class of choice.
+        # prob = torch.softmax(logits, dim=1)[0, predicted_class] # convert logits into problability and select that prob to the class of choice.
+        # confidences.append(prob.item()) #Count Prob of only that class as confidences
 
-        confidences.append(prob.item()) #Count Prob of only that class as confidences
+        prob = torch.softmax(logits, dim=1)[0]  # Get probabilities for all classes
+        confidences.append(prob.detach().cpu())  # Store all class probabilities
+
         percentages.append(step / steps)
 
+        prev_k = k  # Update previous k for next iteration
     # --------------------------------------------------
     # 5. Normalization to 0,1 (Realative Confidence)
     # --------------------------------------------------
-    conf = torch.tensor(confidences)          
-    confidences_normalized = (conf - conf.min()) / (conf.max() - conf.min() + 1e-8)  # Normalize with Max-Min
-    auc_score = auc(percentages, confidences_normalized.tolist())
+
+    confidences = torch.stack(confidences)  # Convert list to tensor [steps+1, num_classes]
+    # Normalize all classes independently
+    conf_min = confidences.min(dim=0, keepdim=True)[0]
+    conf_max = confidences.max(dim=0, keepdim=True)[0]
+
+    confidences_normalized = (
+        (confidences - conf_min) /
+        (conf_max - conf_min + 1e-8)
+    )
+
+    # AUC on normalized predicted class curve
+    pred_curve = confidences_normalized[:, predicted_class]
+    auc_score = auc(percentages, pred_curve.tolist())
 
     return percentages, confidences, confidences_normalized, auc_score
 
