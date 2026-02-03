@@ -174,7 +174,7 @@ for mode in modes:
         # ----------------------------------------------
         # Perturbation evaluation
         # ----------------------------------------------
-        percentages, confidences, auc_score = eval_fn(
+        percentages, confidences, confidences_normalized, auc_score = eval_fn(
             model=model,
             batch=batch,
             saliency=saliency,
@@ -187,6 +187,7 @@ for mode in modes:
         print(f"Predicted class is {predicted_class}")
         print(f"Progression percentage is {percentages}")
         print(f"Confidence score is {confidences}")
+        print(f"Normalized Confidence score is {confidences_normalized}")
 
         rows.append({
             "UID": uid,
@@ -204,6 +205,7 @@ for mode in modes:
                 {
                     "percentages": percentages,
                     "confidences": confidences,
+                    "normalized_confidences" : confidences_normalized,
                     "auc": auc_score,
                 },
                 allow_pickle=True,
