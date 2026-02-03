@@ -136,7 +136,7 @@ results/
 Run Script: [scripts/run_perturbation_evaluation.py](scripts/run_perturbation_evaluation.py)
 * Eg.
 ```bash
-python run_perturbation_evaluation.py \
+python scripts/run_perturbation_evaluation.py \
   --run_folder ODELIA/DinoV2ClassifierSlice_Final \
   --xai_method attention \
   --mode all \
