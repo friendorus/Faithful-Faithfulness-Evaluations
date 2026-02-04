@@ -27,7 +27,7 @@ parser.add_argument("--mode", required=True, choices=["deletion", "insertion", "
 parser.add_argument("--xai_method", required=True, choices=["attention", "attention_rollout"], help="Which saliency 'folder' to evaluate",)
 parser.add_argument("--steps", type=int, default=20)
 parser.add_argument("--max_samples", type=int, default=-1, help="-1 = all available saliency files")
-parser.add_argument("--baseline", default="zero", choices=["zero", "mean", "zero_conf"], help="Baseline for perturbation",)
+parser.add_argument("--baseline", default="black", choices=["black", "zero", "mean", "zero_conf"], help="Baseline for perturbation",)
 parser.add_argument("--save_curves", action="store_true")
 
 args = parser.parse_args()
@@ -136,7 +136,7 @@ for mode in modes:
     results_root = results_path / "evaluation" / mode
     results_root.mkdir(parents=True, exist_ok=True)
 
-    curve_root = results_root / f"{mode}_curves" / args.xai_method
+    curve_root = results_root / f"{mode}_curves" / args.xai_method / args.baseline
 
     if args.save_curves:
         curve_root.mkdir(parents=True, exist_ok=True)
@@ -203,11 +203,12 @@ for mode in modes:
             "mode": mode,
             "predicted_class": predicted_class,
             "auc": auc_score,
+            "baseline": args.baseline,
         })
 
         if args.save_curves:
             np.save(
-                curve_root / f"{uid}_curve.npy",
+                curve_root / f"{uid}_curve_{args.baseline}.npy",
                 {
                     "percentages": np.array(percentages),
                     "confidences": confidences.cpu().numpy(),
@@ -216,6 +217,7 @@ for mode in modes:
                     "predicted_confidences": predicted_confidences.cpu().numpy(),
                     "predicted_normalized_confidences": predicted_confidences_normalized.cpu().numpy(),
                     "auc": auc_score,
+                    "baseline": args.baseline,
                 },
                 allow_pickle=True,
             )
@@ -228,7 +230,7 @@ for mode in modes:
 
     df = pd.DataFrame(rows)
 
-    per_sample_csv = results_root / f"{mode}_{args.xai_method}.csv"
+    per_sample_csv = results_root / f"{mode}_{args.xai_method}_{args.baseline}.csv"
     df.to_csv(per_sample_csv, index=False)
 
     summary = (
@@ -237,7 +239,7 @@ for mode in modes:
         .reset_index()
     )
 
-    summary_csv = results_root / f"{mode}_{args.xai_method}_summary.csv"
+    summary_csv = results_root / f"{mode}_{args.xai_method}_{args.baseline}_summary.csv"
     summary.to_csv(summary_csv, index=False)
 
     print(f"\n{mode.capitalize()} finished.")
