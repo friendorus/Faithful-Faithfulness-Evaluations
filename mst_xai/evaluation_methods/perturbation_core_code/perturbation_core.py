@@ -12,7 +12,7 @@ def perturbation_evaluation(
     patch_size: int,
     steps: int,                 # How often that process will be evaluated" - 20 mean every 5%
     mode: str,                # "deletion" | "insertion" | "negative"
-    baseline: str = "black",  # "black" | "zero" | "mean" | "zero_conf"
+    baseline: str = "black-5",  # "black-5" | "black-10" | "zero" | "mean" | "zero_conf"
     reference_source: torch.Tensor | None = None,
 ):
     """
@@ -38,7 +38,7 @@ def perturbation_evaluation(
         mode : str
             Mode to use for evaluation [Deletion, Insertion or Negative (Perturbation)]
         baseline : str
-            How to method to replace patches or being initial image ["black" | "zero" | "mean" | "zero_conf"]
+            How to method to replace patches or being initial image ["black with -5" | "black with -10" | "zero" | "mean" | "zero_conf"]
         reference_source : torch.Tensor
             if using zero cofidence, require patchs that want to replace
 
@@ -61,16 +61,6 @@ def perturbation_evaluation(
     B, C, D, H, W = source.shape        #[Batch=1, Channels, Depth, Height, Width]
     assert B == 1, "Expect Batch size = 1"
     source = batch["source"].clone()    # [1, C, D, H, W]
-
-    # DEBUG: check post-preprocessing intensity range (print once)
-    if not hasattr(perturbation_evaluation, "_printed_stats"):
-        print(
-            "Post-preprocessing intensity stats:",
-            "min =", source.min().item(),
-            "mean =", source.mean().item(),
-            "max =", source.max().item()
-        )
-        perturbation_evaluation._printed_stats = True
 
     # --------------------------------------------------
     # 1. Saliency → patch grid [Convert Voxel-level saliency into patch-level saliency]
@@ -102,8 +92,11 @@ def perturbation_evaluation(
     # --------------------------------------------------
     # 3. Initial image & replacement
     # --------------------------------------------------
-    if baseline == "black":  # REAL blackening for MRI
+    if baseline == "black-5":  # REAL blackening for MRI
         black_value = -5.0
+        repl = torch.full_like(source, black_value)
+    elif baseline == "black-10":  # REAL blackening for MRI
+        black_value = -10.0
         repl = torch.full_like(source, black_value)
     elif baseline == "zero": #Zeroing out the patch (setting to zero) - for MRI, zeroing out is not blackening, but setting to zero value of MRI
         repl = torch.zeros_like(source)
