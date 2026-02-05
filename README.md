@@ -138,9 +138,9 @@ Run Script: [scripts/run_perturbation_evaluation.py](scripts/run_perturbation_ev
 ```bash
 python scripts/run_perturbation_evaluation.py \
   --run_folder ODELIA/DinoV2ClassifierSlice_Final \
-  --xai_method attention \
+  --xai_method attention_rollout \
   --mode all \
-  --baseline zero \
+  --baseline black \
   --steps 20 \
   --save_curves
 ```
