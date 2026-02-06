@@ -150,6 +150,7 @@ python scripts/run_perturbation_evaluation.py \
 * `negative` is for Negative Perturbation test: Initial image is original image and replace from *lowest* importance-scored patch to highest
 * `all` is for all methods.
 
+
 Outputs:
 ```bash
 results/

@@ -106,7 +106,8 @@ def perturbation_evaluation(
     elif baseline == "mean":
         repl = source.mean() * torch.ones_like(source)
     elif baseline == "gaussian":
-        repl = gaussian_blur_3d(source, kernel_size=9, sigma=2.0)
+        repl = gaussian_blur_3d(source)
+        assert repl.shape == source.shape  
     elif baseline == "zero_conf": #Insert baseline patch that have zero conference
         assert reference_source is not None, \
             "reference_source required for zero_conf replacement"
@@ -175,26 +176,81 @@ def perturbation_evaluation(
     return percentages, confidences, confidences_normalized, auc_score
 
 
-def gaussian_blur_3d(x, kernel_size=9, sigma=2.0):
-    """
-    x: Tensor [1, 1, D, H, W] or [C, D, H, W]
-    """
-    if x.dim() == 4:
-        x = x.unsqueeze(0)
+import torch
+import torch.nn.functional as F
 
-    # Create 1D Gaussian kernel
-    coords = torch.arange(kernel_size, device=x.device) - kernel_size // 2
-    kernel_1d = torch.exp(-(coords**2) / (2 * sigma**2))
-    kernel_1d = kernel_1d / kernel_1d.sum()
 
-    # Separable 3D kernel
-    kx = kernel_1d.view(1, 1, kernel_size, 1, 1)
+@torch.no_grad()
+def gaussian_blur_3d(
+    x: torch.Tensor,
+    kernel_size: int = 9,
+    sigma: float = 2.0,
+    ) -> torch.Tensor:
+    """
+    Shape-preserving Gaussian blur for 3D volumes.
+
+    Input:
+        x: Tensor of shape [C, D, H, W] or [B, C, D, H, W]
+
+    Output:
+        Tensor with EXACT same shape as x
+    """
+
+    assert x.dim() in (4, 5), f"Expected 4D or 5D tensor, got {x.shape}"
+
+    # Track original shape
+    has_batch = (x.dim() == 5)
+
+    if not has_batch:
+        x = x.unsqueeze(0)  # [1, C, D, H, W]
+
+    B, C, D, H, W = x.shape
+    device = x.device
+    dtype = x.dtype
+
+    # 1D Gaussian kernel
+    coords = torch.arange(kernel_size, device=device, dtype=dtype)
+    coords -= kernel_size // 2
+    kernel_1d = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+    kernel_1d /= kernel_1d.sum()
+
+    # Separable kernels
+    kz = kernel_1d.view(1, 1, kernel_size, 1, 1)
     ky = kernel_1d.view(1, 1, 1, kernel_size, 1)
-    kz = kernel_1d.view(1, 1, 1, 1, kernel_size)
+    kx = kernel_1d.view(1, 1, 1, 1, kernel_size)
+
+    # Expand for grouped convolution (per channel)
+    kz = kz.repeat(C, 1, 1, 1, 1)
+    ky = ky.repeat(C, 1, 1, 1, 1)
+    kx = kx.repeat(C, 1, 1, 1, 1)
 
     padding = kernel_size // 2
-    x = F.conv3d(x, kx, padding=(padding, 0, 0), groups=1)
-    x = F.conv3d(x, ky, padding=(0, padding, 0), groups=1)
-    x = F.conv3d(x, kz, padding=(0, 0, padding), groups=1)
 
-    return x.squeeze(0)
+    # Depth
+    x = F.conv3d(
+        x,
+        kz,
+        padding=(padding, 0, 0),
+        groups=C,
+    )
+
+    # Height
+    x = F.conv3d(
+        x,
+        ky,
+        padding=(0, padding, 0),
+        groups=C,
+    )
+
+    # Width
+    x = F.conv3d(
+        x,
+        kx,
+        padding=(0, 0, padding),
+        groups=C,
+    )
+
+    if not has_batch:
+        x = x.squeeze(0)
+
+    return x
