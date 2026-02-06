@@ -12,7 +12,7 @@ def perturbation_evaluation(
     patch_size: int,
     steps: int,                 # How often that process will be evaluated" - 20 mean every 5%
     mode: str,                # "deletion" | "insertion" | "negative"
-    baseline: str = "black-5",  # "black-5" | "black-10" | "zero" | "mean" | "zero_conf"
+    baseline: str = "black-3",  # "black-3" | "black-5" | "black-10" | "zero" | "mean" | "zero_conf" | "gaussian" 
     reference_source: torch.Tensor | None = None,
 ):
     """
@@ -38,7 +38,7 @@ def perturbation_evaluation(
         mode : str
             Mode to use for evaluation [Deletion, Insertion or Negative (Perturbation)]
         baseline : str
-            How to method to replace patches or being initial image ["black with -5" | "black with -10" | "zero" | "mean" | "zero_conf"]
+            How to method to replace patches or being initial image ["black with -3" | "black with -5" | "black with -10" | "zero" | "mean" | "zero_conf" | "gaussian"]
         reference_source : torch.Tensor
             if using zero cofidence, require patchs that want to replace
 
@@ -98,10 +98,15 @@ def perturbation_evaluation(
     elif baseline == "black-10":  # REAL blackening for MRI
         black_value = -10.0
         repl = torch.full_like(source, black_value)
+    elif baseline == "black-3":  # REAL blackening for MRI
+        black_value = -3.0
+        repl = torch.full_like(source, black_value)
     elif baseline == "zero": #Zeroing out the patch (setting to zero) - for MRI, zeroing out is not blackening, but setting to zero value of MRI
         repl = torch.zeros_like(source)
     elif baseline == "mean":
         repl = source.mean() * torch.ones_like(source)
+    elif baseline == "gaussian":
+        repl = gaussian_blur_3d(source, kernel_size=9, sigma=2.0)
     elif baseline == "zero_conf": #Insert baseline patch that have zero conference
         assert reference_source is not None, \
             "reference_source required for zero_conf replacement"
@@ -169,3 +174,27 @@ def perturbation_evaluation(
 
     return percentages, confidences, confidences_normalized, auc_score
 
+
+def gaussian_blur_3d(x, kernel_size=9, sigma=2.0):
+    """
+    x: Tensor [1, 1, D, H, W] or [C, D, H, W]
+    """
+    if x.dim() == 4:
+        x = x.unsqueeze(0)
+
+    # Create 1D Gaussian kernel
+    coords = torch.arange(kernel_size, device=x.device) - kernel_size // 2
+    kernel_1d = torch.exp(-(coords**2) / (2 * sigma**2))
+    kernel_1d = kernel_1d / kernel_1d.sum()
+
+    # Separable 3D kernel
+    kx = kernel_1d.view(1, 1, kernel_size, 1, 1)
+    ky = kernel_1d.view(1, 1, 1, kernel_size, 1)
+    kz = kernel_1d.view(1, 1, 1, 1, kernel_size)
+
+    padding = kernel_size // 2
+    x = F.conv3d(x, kx, padding=(padding, 0, 0), groups=1)
+    x = F.conv3d(x, ky, padding=(0, padding, 0), groups=1)
+    x = F.conv3d(x, kz, padding=(0, 0, padding), groups=1)
+
+    return x.squeeze(0)

@@ -27,7 +27,7 @@ parser.add_argument("--mode", required=True, choices=["deletion", "insertion", "
 parser.add_argument("--xai_method", required=True, choices=["attention", "attention_rollout"], help="Which saliency 'folder' to evaluate",)
 parser.add_argument("--steps", type=int, default=20)
 parser.add_argument("--max_samples", type=int, default=-1, help="-1 = all available saliency files")
-parser.add_argument("--baseline", default="black-5", choices=["black-5", "black-10", "zero", "mean", "zero_conf"], help="Baseline for perturbation",)
+parser.add_argument("--baseline", default="black-5", choices=["black-3", "black-5", "black-10", "zero", "mean", "zero_conf", "gaussian"], help="Baseline for perturbation",)
 parser.add_argument("--save_curves", action="store_true")
 
 args = parser.parse_args()
@@ -189,18 +189,18 @@ for mode in modes:
 
             # DEBUG: check post-preprocessing intensity range (print once)
 
-        print ("Post-preprocessing intensity stats:",
-            "min =", batch["source"].min().item(),
-            "mean =", batch["source"].mean().item(),
-            "max =", batch["source"].max().item())
-        print ("----------------------------------------------")
+        # print ("Post-preprocessing intensity stats:",
+        #     "min =", batch["source"].min().item(),
+        #     "mean =", batch["source"].mean().item(),
+        #     "max =", batch["source"].max().item())
+        # print ("----------------------------------------------")
             
-        print(f"Predicted class is {predicted_class}")
-        print(f"Progression percentage is {percentages}")
-        print(f"Confidence score is {confidences}")
-        print(f"Normalized Confidence score is {confidences_normalized}")
-        print(f"Predicted class confidence: {predicted_confidences}")
-        print(f"Normalized predicted class confidence: {predicted_confidences_normalized}")
+        # print(f"Predicted class is {predicted_class}")
+        # print(f"Progression percentage is {percentages}")
+        # print(f"Confidence score is {confidences}")
+        # print(f"Normalized Confidence score is {confidences_normalized}")
+        # print(f"Predicted class confidence: {predicted_confidences}")
+        # print(f"Normalized predicted class confidence: {predicted_confidences_normalized}")
 
 
         rows.append({
