@@ -130,11 +130,10 @@ def perturbation_evaluation(
     else:
         raise ValueError(f"Unknown replacement: {baseline}")
 
-    if not use_attention_mask:
-        if mode == "insertion":
-            current = repl.clone() #using baseline value as Initial image
-        else:
-            current = source.clone() #using original input image as initial images
+    if mode == "insertion":
+        current = repl.clone() #using baseline value as Initial image
+    else:
+        current = source.clone() #using original input image as initial images
 
     raw_logits = []
     confidences = []
@@ -142,67 +141,28 @@ def perturbation_evaluation(
     
 
     # --------------------------------------------------
-    # 4. Initialize patch mask if using attention masking
-    # --------------------------------------------------
-    if use_attention_mask:
-        # Create a patch mask: True = masked out (don't attend), False = attend
-        # Shape: [D, H_p, W_p] initially, will be flattened
-        if mode == "insertion":
-            # For insertion: start with ALL patches masked out
-            patch_mask_flat = torch.ones(total_patches, dtype=torch.bool, device=device)
-        else:
-            # For deletion and negative: start with NO patches masked
-            patch_mask_flat = torch.zeros(total_patches, dtype=torch.bool, device=device)
-
-    # --------------------------------------------------
-    # 5. Perturbation loop
+    # 4. Perturbation loop
     # --------------------------------------------------
     prev_k = 0
     for step in range(steps + 1):
         k = int(step / steps * total_patches)
         idxs = order[prev_k:k]
 
-        if use_attention_mask:
+        for idx in idxs:
+            d = idx // (H_p * W_p)
+            hw = idx % (H_p * W_p)
+            h = hw // W_p
+            w = hw % W_p
+
+            h0, h1 = h * patch_size, (h + 1) * patch_size
+            w0, w1 = w * patch_size, (w + 1) * patch_size
+
             if mode == "insertion":
-                # For insertion: UNMASK important patches (set to False)
-                patch_mask_flat[idxs] = False
+                current[:, :, d, h0:h1, w0:w1] = source[:, :, d, h0:h1, w0:w1] #source - keep current area with that patch
             else:
-                # For deletion and negative: MASK patches (set to True)
-                patch_mask_flat[idxs] = True
-            
-            # Reshape mask back to spatial dimensions [D, H_p, W_p]
-            patch_mask_spatial = patch_mask_flat.reshape(D, H_p, W_p)
-            
-            # Upsample mask to full resolution [D, H, W]
-            patch_mask_upsampled = F.interpolate(
-                patch_mask_spatial.unsqueeze(0).unsqueeze(0).float(),
-                size=(D, H, W),
-                mode="trilinear",
-                align_corners=False
-            )[0, 0]  # [D, H, W]
-            
-            # Add patch mask to batch
-            batch_with_mask = batch.copy()
-            batch_with_mask["patch_mask"] = patch_mask_upsampled.to(device)
-            
-            logits = model(source, patch_mask=batch_with_mask["patch_mask"])
-        else:
-            for idx in idxs:
-                d = idx // (H_p * W_p)
-                hw = idx % (H_p * W_p)
-                h = hw // W_p
-                w = hw % W_p
+                current[:, :, d, h0:h1, w0:w1] = repl[:, :, d, h0:h1, w0:w1] #replace current area from patch to mask value
 
-                h0, h1 = h * patch_size, (h + 1) * patch_size
-                w0, w1 = w * patch_size, (w + 1) * patch_size
-
-                if mode == "insertion":
-                    current[:, :, d, h0:h1, w0:w1] = source[:, :, d, h0:h1, w0:w1] #source - keep current area with that patch
-                else:
-                    current[:, :, d, h0:h1, w0:w1] = repl[:, :, d, h0:h1, w0:w1] #replace current area from patch to mask value
-
-            logits = model(current)         # logits of model from current perturbed input
-        
+        logits = model(current)         # logits of model from current perturbed input
         # prob = torch.softmax(logits, dim=1)[0, predicted_class] # convert logits into problability and select that prob to the class of choice.
         # confidences.append(prob.item()) #Count Prob of only that class as confidences
         raw_logits.append(logits.detach().cpu()) #Store raw logits for all classes for later normalization
