@@ -12,7 +12,7 @@ def perturbation_evaluation(
     patch_size: int,
     steps: int,                 # How often that process will be evaluated" - 20 mean every 5%
     mode: str,                # "deletion" | "insertion" | "negative"
-    baseline: str = "black-3",  # "black-3" | "black-5" | "black-10" | "zero" | "mean" | "zero_conf" | "gaussian" 
+    baseline: str = "minimum-intensity",  # "minimum-intensity" | "black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian" 
     reference_source: torch.Tensor | None = None,
 ):
     """
@@ -38,7 +38,7 @@ def perturbation_evaluation(
         mode : str
             Mode to use for evaluation [Deletion, Insertion or Negative (Perturbation)]
         baseline : str
-            How to method to replace patches or being initial image ["black with -3" | "black with -5" | "black with -10" | "zero" | "mean" | "zero_conf" | "gaussian"]
+            How to method to replace patches or being initial image ["black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian"]
         reference_source : torch.Tensor
             if using zero cofidence, require patchs that want to replace
 
@@ -92,26 +92,41 @@ def perturbation_evaluation(
     # --------------------------------------------------
     # 3. Initial image & replacement
     # --------------------------------------------------
-    if baseline == "black-5":  # REAL blackening for MRI
-        black_value = -5.0
+    if baseline.startswith("black-"):
+        # Extract numeric value after "black-"
+        try:
+            black_value = -float(baseline.split("-")[1])
+        except (IndexError, ValueError):
+            raise ValueError(f"Invalid baseline format: {baseline}. Expected 'black-<number>'.")
         repl = torch.full_like(source, black_value)
-    elif baseline == "black-10":  # REAL blackening for MRI
-        black_value = -10.0
-        repl = torch.full_like(source, black_value)
-    elif baseline == "black-3":  # REAL blackening for MRI
-        black_value = -3.0
-        repl = torch.full_like(source, black_value)
+
+    elif baseline.startswith("white-"):
+        # Extract numeric value after "white-"
+        try:
+            white_value = float(baseline.split("-")[1])
+        except (IndexError, ValueError):
+            raise ValueError(f"Invalid baseline format: {baseline}. Expected 'white-<number>'.")
+        repl = torch.full_like(source, white_value)
+    
+    elif baseline == "minimum-intensity":
+        min_value = source.min()
+        repl = torch.full_like(source, min_value)
+
     elif baseline == "zero": #Zeroing out the patch (setting to zero) - for MRI, zeroing out is not blackening, but setting to zero value of MRI
         repl = torch.zeros_like(source)
+
     elif baseline == "mean":
         repl = source.mean() * torch.ones_like(source)
+
     elif baseline == "gaussian":
         repl = gaussian_blur_3d(source)
         assert repl.shape == source.shape  
+
     elif baseline == "zero_conf": #Insert baseline patch that have zero conference
         assert reference_source is not None, \
             "reference_source required for zero_conf replacement"
         repl = reference_source.clone()
+
     else:
         raise ValueError(f"Unknown replacement: {baseline}")
 
