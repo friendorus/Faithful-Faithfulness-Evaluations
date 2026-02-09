@@ -42,8 +42,8 @@ dataset_name = run_folder.parent.name
 model_name = run_folder.name.split("_", 1)[0]
 
 path_run = Path(args.run_dir) / run_folder
-results_path = Path(args.output_dir) / "results" / run_folder / "saliency_results"
-saliency_root = results_path / args.xai_method
+results_path = Path(args.output_dir) / "results" / run_folder
+saliency_root = results_path / "saliency_results" / args.xai_method
 
 assert saliency_root.exists(), f"Saliency folder not found: {saliency_root}"
 
@@ -133,7 +133,7 @@ for mode in modes:
 
     print(f"\n=== Running {mode.upper()} evaluation ===")
 
-    results_root = results_path / "evaluation" / mode
+    results_root = results_path / "evaluation_results" / mode
     results_root.mkdir(parents=True, exist_ok=True)
 
     curve_root = results_root / f"{mode}_curves" / args.xai_method / args.baseline
@@ -216,10 +216,7 @@ for mode in modes:
             "baseline": args.baseline,
         })
 
-        if args.save_curves:
-            np.save(
-                curve_root / f"{uid}_curve_{args.baseline}.npy",
-                {
+        curve_dict =  {
                     "percentages": np.array(percentages),
                     "raw_logits": torch.stack(raw_logits).cpu().numpy(),
                     "confidences": confidences.cpu().numpy(),
@@ -229,7 +226,12 @@ for mode in modes:
                     "predicted_normalized_confidences": predicted_confidences_normalized.cpu().numpy(),
                     "auc": auc_score,
                     "baseline": args.baseline,
-                },
+                }
+
+        if args.save_curves:
+            np.save(
+                curve_root / f"{uid}_curve_{args.baseline}.npy",
+                curve_dict,
                 allow_pickle=True,
             )
 
@@ -260,6 +262,7 @@ for mode in modes:
     print(f"\n{mode.capitalize()} finished.")
     print(f"Per-sample CSV: {per_sample_csv}")
     print(f"Summary CSV:    {summary_csv}")
+    print(f"Intensity stats CSV: {intensity_csv}")
     print(summary)
 
 
