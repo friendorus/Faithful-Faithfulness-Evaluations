@@ -12,7 +12,7 @@ def perturbation_evaluation(
     patch_size: int,
     steps: int,                 # How often that process will be evaluated" - 20 mean every 5%
     mode: str,                # "deletion" | "insertion" | "negative"
-    baseline: str = "minimum-intensity",  # "minimum-intensity" | "black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian" | "attention_mask"
+    baseline: str = "minimum-intensity",  # "minimum-intensity" | "black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian" 
     reference_source: torch.Tensor | None = None,
 ):
     """
@@ -38,8 +38,7 @@ def perturbation_evaluation(
         mode : str
             Mode to use for evaluation [Deletion, Insertion or Negative (Perturbation)]
         baseline : str
-            How to method to replace patches or being initial image ["black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian" | "attention_mask"]
-            When "attention_mask" is used, patches are masked out in attention instead of being replaced in the input
+            How to method to replace patches or being initial image ["black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian"]
         reference_source : torch.Tensor
             if using zero cofidence, require patchs that want to replace
 
@@ -93,18 +92,13 @@ def perturbation_evaluation(
     # --------------------------------------------------
     # 3. Initial image & replacement
     # --------------------------------------------------
-    if baseline == "attention_mask":
-        # For attention masking, we'll create a patch mask instead of replacing pixels
-        repl = None
-        use_attention_mask = True
-    elif baseline.startswith("black-"):
+    if baseline.startswith("black-"):
         # Extract numeric value after "black-"
         try:
             black_value = -float(baseline.split("-")[1])
         except (IndexError, ValueError):
             raise ValueError(f"Invalid baseline format: {baseline}. Expected 'black-<number>'.")
         repl = torch.full_like(source, black_value)
-        use_attention_mask = False
 
     elif baseline.startswith("white-"):
         # Extract numeric value after "white-"
@@ -113,31 +107,25 @@ def perturbation_evaluation(
         except (IndexError, ValueError):
             raise ValueError(f"Invalid baseline format: {baseline}. Expected 'white-<number>'.")
         repl = torch.full_like(source, white_value)
-        use_attention_mask = False
     
     elif baseline == "minimum-intensity":
         min_value = source.min()
         repl = torch.full_like(source, min_value)
-        use_attention_mask = False
 
     elif baseline == "zero": #Zeroing out the patch (setting to zero) - for MRI, zeroing out is not blackening, but setting to zero value of MRI
         repl = torch.zeros_like(source)
-        use_attention_mask = False
 
     elif baseline == "mean":
         repl = source.mean() * torch.ones_like(source)
-        use_attention_mask = False
 
     elif baseline == "gaussian":
         repl = gaussian_blur_3d(source)
-        assert repl.shape == source.shape
-        use_attention_mask = False
+        assert repl.shape == source.shape  
 
     elif baseline == "zero_conf": #Insert baseline patch that have zero conference
         assert reference_source is not None, \
             "reference_source required for zero_conf replacement"
         repl = reference_source.clone()
-        use_attention_mask = False
 
     else:
         raise ValueError(f"Unknown replacement: {baseline}")
