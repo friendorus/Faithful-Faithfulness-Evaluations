@@ -42,7 +42,7 @@ dataset_name = run_folder.parent.name
 model_name = run_folder.name.split("_", 1)[0]
 
 path_run = Path(args.run_dir) / run_folder
-results_path = Path(args.output_dir) / "results" / run_folder
+results_path = Path(args.output_dir) / "results" / run_folder / "saliency_results"
 saliency_root = results_path / args.xai_method
 
 assert saliency_root.exists(), f"Saliency folder not found: {saliency_root}"
@@ -142,6 +142,7 @@ for mode in modes:
         curve_root.mkdir(parents=True, exist_ok=True)
 
     rows = []
+    intensity = []
 
     pbar = tqdm(
         saliency_files,
@@ -174,7 +175,7 @@ for mode in modes:
         # ----------------------------------------------
         # Perturbation evaluation
         # ----------------------------------------------
-        percentages, confidences, confidences_normalized, auc_score = eval_fn(
+        percentages, raw_logits, confidences, confidences_normalized, auc_score = eval_fn(
             model=model,
             batch=batch,
             saliency=saliency,
@@ -189,10 +190,11 @@ for mode in modes:
 
             # DEBUG: check post-preprocessing intensity range (print once)
 
-        # print ("Post-preprocessing intensity stats:",
-        #     "min =", batch["source"].min().item(),
-        #     "mean =", batch["source"].mean().item(),
-        #     "max =", batch["source"].max().item())
+        print ("Post-preprocessing intensity stats:",
+            "min =", batch["source"].min().item(),
+            "mean =", batch["source"].mean().item(),
+            "max =", batch["source"].max().item())
+        intensity.append([uid, batch["source"].min().item(), batch["source"].mean().item(), batch["source"].max().item()])
         # print ("----------------------------------------------")
             
         # print(f"Predicted class is {predicted_class}")
@@ -219,6 +221,7 @@ for mode in modes:
                 curve_root / f"{uid}_curve_{args.baseline}.npy",
                 {
                     "percentages": np.array(percentages),
+                    "raw_logits": torch.stack(raw_logits).cpu().numpy(),
                     "confidences": confidences.cpu().numpy(),
                     "normalized_confidences" : confidences_normalized.cpu().numpy(),
                     "predicted_class": predicted_class,
@@ -249,6 +252,10 @@ for mode in modes:
 
     summary_csv = results_root / f"{mode}_{args.xai_method}_{args.baseline}_summary.csv"
     summary.to_csv(summary_csv, index=False)
+
+    df_intensity = pd.DataFrame(intensity, columns=["UID", "min", "mean", "max"])
+    intensity_csv = results_root / f"{mode}_{args.xai_method}_{args.baseline}_intensity_stats.csv"
+    df_intensity.to_csv(intensity_csv, index=False)
 
     print(f"\n{mode.capitalize()} finished.")
     print(f"Per-sample CSV: {per_sample_csv}")

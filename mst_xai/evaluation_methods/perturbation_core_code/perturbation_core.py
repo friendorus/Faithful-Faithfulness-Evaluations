@@ -120,8 +120,10 @@ def perturbation_evaluation(
     else:
         current = source.clone() #using original input image as initial images
 
+    raw_logits = []
     confidences = []
     percentages = []
+    
 
     # --------------------------------------------------
     # 4. Perturbation loop
@@ -148,6 +150,8 @@ def perturbation_evaluation(
         logits = model(current)         # logits of model from current perturbed input
         # prob = torch.softmax(logits, dim=1)[0, predicted_class] # convert logits into problability and select that prob to the class of choice.
         # confidences.append(prob.item()) #Count Prob of only that class as confidences
+        raw_logits.append(logits.detach().cpu()) #Store raw logits for all classes for later normalization
+
 
         prob = torch.softmax(logits, dim=1)[0]  # Get probabilities for all classes
         confidences.append(prob.detach().cpu())  # Store all class probabilities
@@ -173,7 +177,7 @@ def perturbation_evaluation(
     pred_curve = confidences_normalized[:, predicted_class]
     auc_score = auc(percentages, pred_curve.tolist())
 
-    return percentages, confidences, confidences_normalized, auc_score
+    return percentages, raw_logits,confidences, confidences_normalized, auc_score
 
 
 import torch
