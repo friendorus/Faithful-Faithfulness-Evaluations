@@ -12,7 +12,7 @@ def perturbation_evaluation(
     patch_size: int,
     steps: int,                 # How often that process will be evaluated" - 20 mean every 5%
     mode: str,                # "deletion" | "insertion" | "negative"
-    baseline: str = "minimum-intensity",  # "minimum-intensity" | "black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian" 
+    baseline: str = "minimum-intensity",  # "minimum-intensity" | "black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian" | "attention_mask"
     reference_source: torch.Tensor | None = None,
 ):
     """
@@ -38,7 +38,8 @@ def perturbation_evaluation(
         mode : str
             Mode to use for evaluation [Deletion, Insertion or Negative (Perturbation)]
         baseline : str
-            How to method to replace patches or being initial image ["black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian"]
+            How to method to replace patches or being initial image ["black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian" | "attention_mask"]
+            When "attention_mask" is used, patches are masked out in attention instead of being replaced in the input
         reference_source : torch.Tensor
             if using zero cofidence, require patchs that want to replace
 
@@ -92,13 +93,18 @@ def perturbation_evaluation(
     # --------------------------------------------------
     # 3. Initial image & replacement
     # --------------------------------------------------
-    if baseline.startswith("black-"):
+    if baseline == "attention_mask":
+        # For attention masking, we'll create a patch mask instead of replacing pixels
+        repl = None
+        use_attention_mask = True
+    elif baseline.startswith("black-"):
         # Extract numeric value after "black-"
         try:
             black_value = -float(baseline.split("-")[1])
         except (IndexError, ValueError):
             raise ValueError(f"Invalid baseline format: {baseline}. Expected 'black-<number>'.")
         repl = torch.full_like(source, black_value)
+        use_attention_mask = False
 
     elif baseline.startswith("white-"):
         # Extract numeric value after "white-"
@@ -107,33 +113,40 @@ def perturbation_evaluation(
         except (IndexError, ValueError):
             raise ValueError(f"Invalid baseline format: {baseline}. Expected 'white-<number>'.")
         repl = torch.full_like(source, white_value)
+        use_attention_mask = False
     
     elif baseline == "minimum-intensity":
         min_value = source.min()
         repl = torch.full_like(source, min_value)
+        use_attention_mask = False
 
     elif baseline == "zero": #Zeroing out the patch (setting to zero) - for MRI, zeroing out is not blackening, but setting to zero value of MRI
         repl = torch.zeros_like(source)
+        use_attention_mask = False
 
     elif baseline == "mean":
         repl = source.mean() * torch.ones_like(source)
+        use_attention_mask = False
 
     elif baseline == "gaussian":
         repl = gaussian_blur_3d(source)
-        assert repl.shape == source.shape  
+        assert repl.shape == source.shape
+        use_attention_mask = False
 
     elif baseline == "zero_conf": #Insert baseline patch that have zero conference
         assert reference_source is not None, \
             "reference_source required for zero_conf replacement"
         repl = reference_source.clone()
+        use_attention_mask = False
 
     else:
         raise ValueError(f"Unknown replacement: {baseline}")
 
-    if mode == "insertion":
-        current = repl.clone() #using baseline value as Initial image
-    else:
-        current = source.clone() #using original input image as initial images
+    if not use_attention_mask:
+        if mode == "insertion":
+            current = repl.clone() #using baseline value as Initial image
+        else:
+            current = source.clone() #using original input image as initial images
 
     raw_logits = []
     confidences = []
@@ -141,28 +154,67 @@ def perturbation_evaluation(
     
 
     # --------------------------------------------------
-    # 4. Perturbation loop
+    # 4. Initialize patch mask if using attention masking
+    # --------------------------------------------------
+    if use_attention_mask:
+        # Create a patch mask: True = masked out (don't attend), False = attend
+        # Shape: [D, H_p, W_p] initially, will be flattened
+        if mode == "insertion":
+            # For insertion: start with ALL patches masked out
+            patch_mask_flat = torch.ones(total_patches, dtype=torch.bool, device=device)
+        else:
+            # For deletion and negative: start with NO patches masked
+            patch_mask_flat = torch.zeros(total_patches, dtype=torch.bool, device=device)
+
+    # --------------------------------------------------
+    # 5. Perturbation loop
     # --------------------------------------------------
     prev_k = 0
     for step in range(steps + 1):
         k = int(step / steps * total_patches)
         idxs = order[prev_k:k]
 
-        for idx in idxs:
-            d = idx // (H_p * W_p)
-            hw = idx % (H_p * W_p)
-            h = hw // W_p
-            w = hw % W_p
-
-            h0, h1 = h * patch_size, (h + 1) * patch_size
-            w0, w1 = w * patch_size, (w + 1) * patch_size
-
+        if use_attention_mask:
             if mode == "insertion":
-                current[:, :, d, h0:h1, w0:w1] = source[:, :, d, h0:h1, w0:w1] #source - keep current area with that patch
+                # For insertion: UNMASK important patches (set to False)
+                patch_mask_flat[idxs] = False
             else:
-                current[:, :, d, h0:h1, w0:w1] = repl[:, :, d, h0:h1, w0:w1] #replace current area from patch to mask value
+                # For deletion and negative: MASK patches (set to True)
+                patch_mask_flat[idxs] = True
+            
+            # Reshape mask back to spatial dimensions [D, H_p, W_p]
+            patch_mask_spatial = patch_mask_flat.reshape(D, H_p, W_p)
+            
+            # Upsample mask to full resolution [D, H, W]
+            patch_mask_upsampled = F.interpolate(
+                patch_mask_spatial.unsqueeze(0).unsqueeze(0).float(),
+                size=(D, H, W),
+                mode="trilinear",
+                align_corners=False
+            )[0, 0]  # [D, H, W]
+            
+            # Add patch mask to batch
+            batch_with_mask = batch.copy()
+            batch_with_mask["patch_mask"] = patch_mask_upsampled.to(device)
+            
+            logits = model(source, patch_mask=batch_with_mask["patch_mask"])
+        else:
+            for idx in idxs:
+                d = idx // (H_p * W_p)
+                hw = idx % (H_p * W_p)
+                h = hw // W_p
+                w = hw % W_p
 
-        logits = model(current)         # logits of model from current perturbed input
+                h0, h1 = h * patch_size, (h + 1) * patch_size
+                w0, w1 = w * patch_size, (w + 1) * patch_size
+
+                if mode == "insertion":
+                    current[:, :, d, h0:h1, w0:w1] = source[:, :, d, h0:h1, w0:w1] #source - keep current area with that patch
+                else:
+                    current[:, :, d, h0:h1, w0:w1] = repl[:, :, d, h0:h1, w0:w1] #replace current area from patch to mask value
+
+            logits = model(current)         # logits of model from current perturbed input
+        
         # prob = torch.softmax(logits, dim=1)[0, predicted_class] # convert logits into problability and select that prob to the class of choice.
         # confidences.append(prob.item()) #Count Prob of only that class as confidences
         raw_logits.append(logits.detach().cpu()) #Store raw logits for all classes for later normalization

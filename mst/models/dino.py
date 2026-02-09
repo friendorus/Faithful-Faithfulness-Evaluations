@@ -4,6 +4,7 @@ from .base_model import BasicClassifier
 # from transformers import Dinov2Model
 from .utils.transformer_blocks import TransformerEncoderLayer
 import torch.nn as nn
+import torch.nn.functional as F
 from einops import rearrange
 from .extern.dinov2.vision_transformer import vit_small, vit_base, vit_large, vit_giant2
 
@@ -103,7 +104,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
         self.linear = nn.Linear(emb_ch, out_ch) if enable_linear else nn.Identity()
 
 
-    def forward(self, source, save_attn=False, src_key_padding_mask=None, **kwargs):   
+    def forward(self, source, save_attn=False, src_key_padding_mask=None, patch_mask=None, **kwargs):   
 
         if save_attn:
             fastpath_enabled = torch.backends.mha.get_fastpath_enabled()
@@ -113,6 +114,8 @@ class DinoV2ClassifierSlice(BasicClassifier):
             self.hooks = []
             self.register_hooks()
 
+        # Store patch_mask for use in attention hooks if provided
+        self.patch_mask = patch_mask
 
         x = source.to(self.device) # [B, C, D, H, W]
         B, C, *_ = x.shape
@@ -228,6 +231,42 @@ class DinoV2ClassifierSlice(BasicClassifier):
                     attn = q @ k.transpose(-2, -1)
            
                     attn = attn.softmax(dim=-1)
+                    
+                    # Apply patch mask to attention if available
+                    if self.patch_mask is not None:
+                        # patch_mask shape: [D, H, W] (upsampled from patches)
+                        # attn shape: [B*D, num_heads, num_tokens, num_tokens]
+                        # We need to convert spatial mask to patch-level mask
+                        D, H, W = self.patch_mask.shape
+                        patch_size = self.encoder.patch_embed.patch_size
+                        if isinstance(patch_size, tuple):
+                            patch_size = patch_size[0]
+                        
+                        H_p = H // patch_size
+                        W_p = W // patch_size
+                        
+                        # Downsample mask to patch resolution
+                        patch_mask_downsampled = F.interpolate(
+                            self.patch_mask.unsqueeze(0).unsqueeze(0).float(),
+                            size=(D, H_p, W_p),
+                            mode="trilinear",
+                            align_corners=False
+                        )[0, 0]  # [D, H_p, W_p]
+                        
+                        # Flatten to patch level [D*H_p*W_p]
+                        patch_mask_flat = patch_mask_downsampled.flatten().bool()
+                        
+                        # Add CLS token dimension (not masked): prepend False
+                        patch_mask_flat = torch.cat([torch.tensor([False], device=patch_mask_flat.device, dtype=torch.bool), patch_mask_flat])
+                        
+                        # Apply mask to attention: set attention to masked patches to 0
+                        # attn: [B*D, num_heads, N_tokens, N_tokens]
+                        mask_attn = (~patch_mask_flat).float()  # Invert: True for valid, False for masked
+                        attn = attn * mask_attn.unsqueeze(0).unsqueeze(0).unsqueeze(2)
+                        
+                        # Renormalize attention
+                        attn = attn / (attn.sum(dim=-1, keepdim=True) + 1e-8)
+                    
                     if callable(self2.attn_drop):
                         attn = self2.attn_drop(attn)
 

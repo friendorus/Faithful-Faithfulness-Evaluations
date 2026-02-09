@@ -28,8 +28,8 @@ parser.add_argument("--xai_method", required=True, choices=["attention", "attent
 parser.add_argument("--steps", type=int, default=20)
 parser.add_argument("--max_samples", type=int, default=-1, help="-1 = all available saliency files")
 parser.add_argument("--baseline", default="minimum-intensity", choices=["minimum-intensity", "black-3", "black-5", "black-10", 
-                                                                        "white-5", "white-10", "zero", "mean", "zero_conf", "gaussian"], 
-                                                                        help="Baseline for perturbation",)
+                                                                        "white-5", "white-10", "zero", "mean", "zero_conf", "gaussian", "attention_mask"], 
+                                                                        help="Baseline for perturbation. Use 'attention_mask' to mask patches in attention instead of replacing pixel values.",)
 parser.add_argument("--save_curves", action="store_true")
 
 args = parser.parse_args()
