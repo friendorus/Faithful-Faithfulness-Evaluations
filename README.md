@@ -145,27 +145,39 @@ python scripts/run_perturbation_evaluation.py \
   --save_curves
 ```
 * Use "--mode" with choices for `deletion`, `insertion`, `negative` or `all`
-* `deletion` is for Deletion: Initail image is original image and replace from highest importance-scored patch to lowest
-* `insertion` is for Insertion: Initial image is blank image and replace from highest importance-scored patch to lowest
-* `negative` is for Negative Perturbation test: Initial image is original image and replace from *lowest* importance-scored patch to highest
-* `all` is for all methods.
+    * `deletion` is for Deletion: Initail image is original image and replace from highest importance-scored patch to lowest
+    * `insertion` is for Insertion: Initial image is blank image and replace from highest importance-scored patch to lowest
+    * `negative` is for Negative Perturbation test: Initial image is original image and replace from *lowest* importance-scored patch to highest
+    * `all` is for all methods.
 
+* Use "--baseline" with choices for `minimum-intensity`, `black-3`, `black-5`, `black-10`, `white-5`, `white-10`, `zero`, `mean`, `zero_conf`, `gaussian_blur`,`attention_mask`
+    * All "--baseline" mean what do you want to replace that patch with except `attention_mask`
+    * Use "--baseline `attention_mask`" will use Attention Masking instead of replacing
+    * `minimum-intensity` mean using the lowest intensity of that image as replacing patch
+    * `black-[number]` mean replace with specific value for z score that less than 0 (assume as black)
+    * `white-[number]` mean replace with specific value for z score that more than 0 (assume as white)
+    * `zero` mean replace with z score = 0
+    * `mean` mean replace with mean value of the image
+    * `zero_conf` mean replace with additional patch that assume it's zero confidences
+    * `gaussian_blur` mean replace with gaussian blur in this case set kernel_size == 9 and sigma == 2
+
+* Use "`--save_curves`" will save numpy files for each image to use to calculate avarage later
 
 Outputs:
 ```bash
 results/
-├── ODELIA/DinoV2ClassifierSlice_Final/evaluation/deletion
-│   ├── deletion_attention.csv
-│   ├── deletion_attention_summary.csv
-│   └── deletion_curves/attention/ (optional)
-├── ODELIA/DinoV2ClassifierSlice_Final/evaluation/insertion
-│   ├── insertion_attention.csv
-│   ├── insertion_attention_summary.csv
-│   └── insertion_curves/attention/ (optional)
-└── ODELIA/DinoV2ClassifierSlice_Final/evaluation/negative
-    ├── negative_attention.csv
-    ├── negative_attention_summary.csv
-    └── negative_curves/attention/ (optional)
+├── ODELIA/DinoV2ClassifierSlice_Final/evaluation_results/deletion
+│   ├── deletion_attention_baseline.csv
+│   ├── deletion_attention_summary_baseline.csv
+│   └── deletion_curves/attention/[baseline] (optional)
+├── ODELIA/DinoV2ClassifierSlice_Final/evaluation_results/insertion
+│   ├── insertion_attention_baseline.csv
+│   ├── insertion_attention_summary_baseline.csv
+│   └── insertion_curves/attention/[baseline] (optional)
+└── ODELIA/DinoV2ClassifierSlice_Final/evaluation_results/negative
+    ├── negative_attention_baseline.csv
+    ├── negative_attention_summary_baseline.csv
+    └── negative_curves/attention/[baseline] (optional)
     
 ```
 #### Create ROC Curve for Deletion
