@@ -12,7 +12,7 @@ def perturbation_evaluation(
     patch_size: int,
     steps: int,                 # How often that process will be evaluated" - 20 mean every 5%
     mode: str,                # "deletion" | "insertion" | "negative"
-    baseline: str = "minimum-intensity",  # "minimum-intensity" | "attention_mask" | "black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian" 
+    baseline: str = "minimum-intensity",  # "minimum-intensity" | "attention_mask" | "black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian_blur" 
     reference_source: torch.Tensor | None = None,
 ):
     """
@@ -38,7 +38,7 @@ def perturbation_evaluation(
         mode : str
             Mode to use for evaluation [Deletion, Insertion or Negative (Perturbation)]
         baseline : str
-            How to method to replace patches or being initial image ["black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian"]
+            How to method to replace patches or being initial image ["black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian_blur"]
             except "attention_mask" For "attention_mask" baseline, we will use the original source as the initial image and rely on the patch_mask to control which patches are considered by the model.
         reference_source : torch.Tensor
             if using zero cofidence, require patchs that want to replace
@@ -119,7 +119,7 @@ def perturbation_evaluation(
     elif baseline == "mean":
         repl = source.mean() * torch.ones_like(source)
 
-    elif baseline == "gaussian":
+    elif baseline == "gaussian_blur": # Using Gaussian blur of the original image as the replacement value for deleted patches
         repl = gaussian_blur_3d(source)
         assert repl.shape == source.shape  
 
