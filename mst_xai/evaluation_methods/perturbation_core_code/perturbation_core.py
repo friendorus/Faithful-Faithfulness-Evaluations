@@ -12,7 +12,7 @@ def perturbation_evaluation(
     patch_size: int,
     steps: int,                 # How often that process will be evaluated" - 20 mean every 5%
     mode: str,                # "deletion" | "insertion" | "negative"
-    baseline: str = "minimum-intensity",  # "minimum-intensity" | "black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian" 
+    baseline: str = "minimum-intensity",  # "minimum-intensity" | "attention_mask" | "black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian" 
     reference_source: torch.Tensor | None = None,
 ):
     """
@@ -39,6 +39,7 @@ def perturbation_evaluation(
             Mode to use for evaluation [Deletion, Insertion or Negative (Perturbation)]
         baseline : str
             How to method to replace patches or being initial image ["black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian"]
+            except "attention_mask" For "attention_mask" baseline, we will use the original source as the initial image and rely on the patch_mask to control which patches are considered by the model.
         reference_source : torch.Tensor
             if using zero cofidence, require patchs that want to replace
 
@@ -60,7 +61,7 @@ def perturbation_evaluation(
 
     B, C, D, H, W = source.shape        #[Batch=1, Channels, Depth, Height, Width]
     assert B == 1, "Expect Batch size = 1"
-    source = batch["source"].clone()    # [1, C, D, H, W]
+    # source = batch["source"].clone()    # [1, C, D, H, W]
 
     # --------------------------------------------------
     # 1. Saliency → patch grid [Convert Voxel-level saliency into patch-level saliency]
@@ -90,7 +91,7 @@ def perturbation_evaluation(
     total_patches = flat_sal.numel()            # count totla number of patches D × H_p × W_p
 
     # --------------------------------------------------
-    # 3. Initial image & replacement
+    # 3 Initial image & replacement
     # --------------------------------------------------
     if baseline.startswith("black-"):
         # Extract numeric value after "black-"
@@ -122,18 +123,41 @@ def perturbation_evaluation(
         repl = gaussian_blur_3d(source)
         assert repl.shape == source.shape  
 
-    elif baseline == "zero_conf": #Insert baseline patch that have zero conference
+    elif baseline == "zero_conf": #Using baseline patch that have zero confidence
         assert reference_source is not None, \
             "reference_source required for zero_conf replacement"
         repl = reference_source.clone()
+    
+    elif baseline == "attention_mask": # Using attention mask instead of replace patch with specific value, so no need to create repl tensor.
+        repl = None # Model should handle this case internally by using patch_mask to ignore those patches, so no need to create a separate repl tensor.
 
     else:
         raise ValueError(f"Unknown replacement: {baseline}")
+    
 
-    if mode == "insertion":
-        current = repl.clone() #using baseline value as Initial image
+    if baseline == "attention_mask":
+        # --------------------------------------------------
+        # Attention mask (True = keep, False = remove)
+        # --------------------------------------------------
+        patch_mask = torch.ones(
+            (D, H_p, W_p),
+            device=device,
+            dtype=torch.bool
+        )
+        # For attention mask baseline, we will use the original source as the initial image and rely on the patch_mask to control which patches are considered by the model.
+        current = source.clone()  # Start with the original image
+
+        if mode == "insertion": # attention mask + insertion
+            patch_mask[:] = False # Start with all patches removed (False) and add them back in order
+        else: # attention mask + deletion or attention mask + negative perturbation
+            patch_mask[:] = True # Start with all patches present (True) and remove them in order
+
     else:
-        current = source.clone() #using original input image as initial images
+        if mode == "insertion":
+            current = repl.clone() #using baseline value as Initial image
+        else:
+            current = source.clone() #using original input image as initial images
+
 
     raw_logits = []
     confidences = []
@@ -158,11 +182,18 @@ def perturbation_evaluation(
             w0, w1 = w * patch_size, (w + 1) * patch_size
 
             if mode == "insertion":
-                current[:, :, d, h0:h1, w0:w1] = source[:, :, d, h0:h1, w0:w1] #source - keep current area with that patch
-            else:
-                current[:, :, d, h0:h1, w0:w1] = repl[:, :, d, h0:h1, w0:w1] #replace current area from patch to mask value
+                if baseline != "attention_mask":
+                    current[:, :, d, h0:h1, w0:w1] = source[:, :, d, h0:h1, w0:w1] #source - keep current area with that patch
+                else: # insertion + attention mask
+                    patch_mask[d, h, w] = True # Mark patch as present
+            else: # deletion or negative perturbation
+                if baseline != "attention_mask":
+                    current[:, :, d, h0:h1, w0:w1] = repl[:, :, d, h0:h1, w0:w1] #replace current area from patch to mask value
+                else: # deletion + attention mask or negative perturbation + attention mask
+                    patch_mask[d, h, w] = False # Mark patch as removed
 
-        logits = model(current)         # logits of model from current perturbed input
+        logits = model(current, 
+                       patch_mask=patch_mask if baseline == "attention_mask" else None)         # logits of model from current perturbed input
         # prob = torch.softmax(logits, dim=1)[0, predicted_class] # convert logits into problability and select that prob to the class of choice.
         # confidences.append(prob.item()) #Count Prob of only that class as confidences
         raw_logits.append(logits.detach().cpu()) #Store raw logits for all classes for later normalization
