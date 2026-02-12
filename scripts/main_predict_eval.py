@@ -1,9 +1,5 @@
-import warnings
-warnings.filterwarnings("ignore", message="xFormers is not available")
-warnings.filterwarnings("ignore", message="enable_nested_tensor is True")
-warnings.filterwarnings("ignore", message="'pin_memory' argument is set as true")
-warnings.filterwarnings("ignore", message="A module that was compiled using NumPy 1.x")
-warnings.filterwarnings("ignore", message=".*_ARRAY_API not found.*")
+from mst.utils.ignore_warning import suppress_mst_warnings
+suppress_mst_warnings()
 
 
 
@@ -25,10 +21,6 @@ def main(args):
     results_path = Path(args.output_dir) / "results" / run_folder
     results_path.mkdir(parents=True, exist_ok=True)
 
-
-
-
-    
 
     model = load_model(
         model_name=model_name,

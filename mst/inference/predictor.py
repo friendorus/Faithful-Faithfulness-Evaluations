@@ -1,3 +1,7 @@
+from mst.utils.ignore_warning import suppress_mst_warnings
+suppress_mst_warnings()
+
+
 from pathlib import Path
 import torch
 
@@ -55,7 +59,8 @@ def load_model(model_name, checkpoint_path, device):
 
 # --------------------------------------------------
 # Batch prediction utility [Predict Batch with Optional Test-Time Augmentation (TTA)]
-#import torch
+# import torch
+from tqdm.auto import tqdm
 def predict_batch(model, batch, device, use_tta=False):
 
     source = batch["source"].to(device)
@@ -77,7 +82,7 @@ def predict_batch(model, batch, device, use_tta=False):
                 (2,3,4)
             ]
 
-            for dims in flip_dims:
+            for dims in tqdm(flip_dims, desc="TTA Flips", leave=False):
                 flipped = torch.flip(source, dims)
                 pred += forward_pass(flipped, mask)
 
@@ -89,6 +94,7 @@ def predict_batch(model, batch, device, use_tta=False):
 # Inference runner utility [Run Inference on Dataset and Collect Results]
 import pandas as pd
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 
 def run_inference(
@@ -112,7 +118,7 @@ def run_inference(
 
     results = []
 
-    for batch in loader:
+    for batch in tqdm(loader, desc="Running Inference", dynamic_ncols=True):
 
         target = batch["target"]
         uid = batch["uid"][0] if isinstance(batch["uid"], list) else str(batch["uid"].item())

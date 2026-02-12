@@ -1,3 +1,7 @@
+from mst.utils.ignore_warning import suppress_mst_warnings
+suppress_mst_warnings()
+
+
 from pathlib import Path
 import numpy as np
 import pandas as pd
