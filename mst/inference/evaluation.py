@@ -140,11 +140,14 @@ def evaluate_and_plot(df: pd.DataFrame, output_dir: str):
 
     metrics = evaluate_classification(df)
 
+    clean_auc = {int(k): float(v) for k, v in metrics["auc_per_class"].items()}
+
     print(f"Accuracy: {metrics['accuracy']:.4f}")
     print(f"Macro F1: {metrics['macro_f1']:.4f}")
     print("\nClassification Report:\n")
     print(metrics["classification_report"])
-    print("AUC per class:", metrics["auc_per_class"])
+
+    print("AUC per class:", clean_auc)
 
     plot_confusion_matrix(
         cm=metrics["confusion_matrix"],
