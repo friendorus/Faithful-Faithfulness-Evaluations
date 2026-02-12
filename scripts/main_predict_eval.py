@@ -38,6 +38,10 @@ def main(args):
     output_dir = results_path / "predictions"
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    if args.use_tta:
+        output_dir = output_dir / "tta"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
     df.to_csv(output_dir / "results.csv", index=False)
 
     evaluate_and_plot(df, str(output_dir))
