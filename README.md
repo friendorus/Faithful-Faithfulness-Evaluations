@@ -63,15 +63,14 @@ Run Script: [scripts/main_predict_eval.py](scripts/main_predict_eval.py)
 ```bash
 python scripts/main_predict_eval.py \
     --dataset ODELIA \
-    --run_folder runs/ODELIA/DinoV2ClassifierSlice_Final\
+    --run_folder ODELIA/DinoV2ClassifierSlice_Final
 ```
 
 ### With TTA
 ```bash
 python scripts/main_predict_eval.py \
     --dataset ODELIA \
-    --run_folder runs/ODELIA/DinoV2ClassifierSlice_Final \
-    --output_dir ./predictions \
+    --run_folder ODELIA/DinoV2ClassifierSlice_Final \
     --use_tta
 ```
 
