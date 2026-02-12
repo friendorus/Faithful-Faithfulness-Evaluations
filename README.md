@@ -12,12 +12,12 @@ conda env create -f environment.yaml
 
 ### Step 2 - Install `requirements.txt`
 ```bash
-pip install -r requirement.txt
+pip install -r requirements.txt
 ```
 
 ### Step 3 
 ```bash
-pip isntall -e .
+pip install -e .
 ```
 
 
