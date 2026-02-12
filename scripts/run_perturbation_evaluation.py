@@ -9,9 +9,7 @@ sys.path.append(str(PROJECT_ROOT))
 
 from tqdm import tqdm
 
-from mst.models.dino import DinoV2ClassifierSlice
-from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
-
+from mst.inference.predictor import load_model, get_dataset_class, predict_batch
 from mst_xai.utils.load_saliency import load_saliency
 
 
@@ -58,7 +56,7 @@ torch.set_float32_matmul_precision("high")
 # Load model
 # ============================================================
 
-model = DinoV2ClassifierSlice.load_best_checkpoint(path_run)
+model = load_model("DinoV2ClassifierSlice", path_run, device)
 model.to(device).eval()
 
 patch_size = model.encoder.patch_embed.patch_size
@@ -71,7 +69,7 @@ if isinstance(patch_size, tuple):
 # ============================================================
 
 if dataset_name == "ODELIA":
-    dataset = ODELIA_Dataset3D(split="test")
+    dataset = get_dataset_class(name="ODELIA")(split="test")
 else:
     raise ValueError(f"Unsupported dataset: {dataset_name}")
 
@@ -173,7 +171,7 @@ for mode in modes:
         # ----------------------------------------------
         with torch.no_grad():
             logits = model(batch["source"])
-            predicted_class = logits.argmax(dim=1).item()
+            predicted_class = logits.argmax(dim=-1).item()
 
         # ----------------------------------------------
         # Perturbation evaluation

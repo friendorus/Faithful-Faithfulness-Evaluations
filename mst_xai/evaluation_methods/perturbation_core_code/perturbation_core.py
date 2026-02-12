@@ -199,7 +199,7 @@ def perturbation_evaluation(
         raw_logits.append(logits.detach().cpu()) #Store raw logits for all classes for later normalization
 
 
-        prob = torch.softmax(logits, dim=1)[0]  # Get probabilities for all classes
+        prob = torch.softmax(logits, dim=-1)[0]  # Get probabilities for all classes
         confidences.append(prob.detach().cpu())  # Store all class probabilities
 
         percentages.append(step / steps)
