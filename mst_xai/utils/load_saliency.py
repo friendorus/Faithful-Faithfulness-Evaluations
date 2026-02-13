@@ -1,3 +1,7 @@
+from mst.utils.ignore_warning import suppress_mst_warnings
+suppress_mst_warnings()
+
+
 import torch
 import numpy as np
 from pathlib import Path
@@ -9,7 +13,7 @@ def load_saliency(path: Path, device="cpu"):
     Returns torch.Tensor [D, H, W]
     """
     if path.suffix == ".pt":
-        sal = torch.load(path, map_location=device)
+        sal = torch.load(path, map_location=device, weights_only=True)
     elif path.suffix == ".npy":
         sal = torch.from_numpy(np.load(path))
     else:

@@ -1,11 +1,17 @@
-import argparse
-import torch
-import pandas as pd
-import numpy as np
 import sys
 from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(PROJECT_ROOT))
+
+
+from mst.utils.ignore_warning import suppress_mst_warnings
+suppress_mst_warnings()
+
+import argparse
+import torch
+import pandas as pd
+import numpy as np
+
 
 from tqdm import tqdm
 
@@ -191,10 +197,10 @@ for mode in modes:
 
             # DEBUG: check post-preprocessing intensity range (print once)
 
-        print ("Post-preprocessing intensity stats:",
-            "min =", batch["source"].min().item(),
-            "mean =", batch["source"].mean().item(),
-            "max =", batch["source"].max().item())
+        # print ("Post-preprocessing intensity stats:",
+        #     "min =", batch["source"].min().item(),
+        #     "mean =", batch["source"].mean().item(),
+        #     "max =", batch["source"].max().item())
         intensity.append([uid, batch["source"].min().item(), batch["source"].mean().item(), batch["source"].max().item()])
         # print ("----------------------------------------------")
             
