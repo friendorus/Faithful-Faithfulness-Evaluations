@@ -182,6 +182,7 @@ for mode in modes:
         # ----------------------------------------------
         # Perturbation evaluation
         # ----------------------------------------------
+        model.eval()
         percentages, raw_logits, confidences, confidences_normalized, auc_score = eval_fn(
             model=model,
             batch=batch,

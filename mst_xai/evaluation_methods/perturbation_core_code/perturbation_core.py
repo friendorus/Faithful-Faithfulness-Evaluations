@@ -192,8 +192,11 @@ def perturbation_evaluation(
                 else: # deletion + attention mask or negative perturbation + attention mask
                     patch_mask[d, h, w] = False # Mark patch as removed
 
-        logits = model(current, 
-                       patch_mask=patch_mask if baseline == "attention_mask" else None)         # logits of model from current perturbed input
+        logits = model(
+            current,
+            src_key_padding_mask=batch.get("src_key_padding_mask"),
+            patch_mask=patch_mask if baseline == "attention_mask" else None
+            )
         # prob = torch.softmax(logits, dim=1)[0, predicted_class] # convert logits into problability and select that prob to the class of choice.
         # confidences.append(prob.item()) #Count Prob of only that class as confidences
         raw_logits.append(logits.detach().cpu()) #Store raw logits for all classes for later normalization
