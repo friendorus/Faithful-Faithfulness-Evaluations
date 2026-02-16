@@ -93,7 +93,7 @@ python scripts/run_attention.py \
 ```
 OR
 ``` bash
-python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final --use_rollout`
+python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final --use_rollout --max_images_per_class 20
 ```
 
 Outputs:
