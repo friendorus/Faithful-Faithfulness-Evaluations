@@ -234,37 +234,33 @@ class DinoV2ClassifierSlice(BasicClassifier):
                     
                     # Apply patch mask to attention if available
                     if self.patch_mask is not None:
-                        # patch_mask shape: [D, H, W] (upsampled from patches)
-                        # attn shape: [B*D, num_heads, num_tokens, num_tokens]
-                        # We need to convert spatial mask to patch-level mask
-                        D, H, W = self.patch_mask.shape
-                        patch_size = self.encoder.patch_embed.patch_size
-                        if isinstance(patch_size, tuple):
-                            patch_size = patch_size[0]
+                        # patch_mask shape: [D, H_p, W_p] - ALREADY at patch resolution from perturbation_core
+                        # attn shape: [D, num_heads, N_tokens, N_tokens] where N_tokens = 1 + H_p*W_p + num_regs
+                        # D is the batch dimension (number of slices)
                         
-                        H_p = H // patch_size
-                        W_p = W // patch_size
+                        D_mask, H_p, W_p = self.patch_mask.shape
+                        num_registers = 4 if self.use_registers else 0
                         
-                        # Downsample mask to patch resolution
-                        patch_mask_downsampled = F.interpolate(
-                            self.patch_mask.unsqueeze(0).unsqueeze(0).float(),
-                            size=(D, H_p, W_p),
-                            mode="trilinear",
-                            align_corners=False
-                        )[0, 0]  # [D, H_p, W_p]
+                        # For each slice (batch item), create its mask
+                        batch_masks = []
+                        for d in range(B):  # B = D in this case
+                            # Get the mask for this slice
+                            slice_mask = self.patch_mask[d % D_mask]  # [H_p, W_p]
+                            slice_mask_flat = slice_mask.flatten().bool()  # [H_p*W_p]
+                            
+                            # Build full token mask: [CLS | patches | registers]
+                            cls_mask = torch.tensor([True], device=slice_mask_flat.device, dtype=torch.bool)
+                            reg_mask = torch.ones(num_registers, device=slice_mask_flat.device, dtype=torch.bool) if num_registers > 0 else torch.tensor([], device=slice_mask_flat.device, dtype=torch.bool)
+                            full_mask = torch.cat([cls_mask, slice_mask_flat, reg_mask])  # [N]
+                            batch_masks.append(full_mask)
                         
-                        # Flatten to patch level [D*H_p*W_p]
-                        patch_mask_flat = patch_mask_downsampled.flatten().bool()
+                        mask_tensor = torch.stack(batch_masks)  # [B, N]
                         
-                        # Add CLS token dimension (not masked): prepend False
-                        patch_mask_flat = torch.cat([torch.tensor([False], device=patch_mask_flat.device, dtype=torch.bool), patch_mask_flat])
+                        # Apply mask: attn [B, num_heads, N, N], mask [B, N]
+                        mask_attn = mask_tensor.unsqueeze(1).unsqueeze(2).float()  # [B, 1, 1, N]
+                        attn = attn * mask_attn
                         
-                        # Apply mask to attention: set attention to masked patches to 0
-                        # attn: [B*D, num_heads, N_tokens, N_tokens]
-                        mask_attn = (~patch_mask_flat).float()  # Invert: True for valid, False for masked
-                        attn = attn * mask_attn.unsqueeze(0).unsqueeze(0).unsqueeze(2)
-                        
-                        # Renormalize attention
+                        # Renormalize
                         attn = attn / (attn.sum(dim=-1, keepdim=True) + 1e-8)
                     
                     if callable(self2.attn_drop):

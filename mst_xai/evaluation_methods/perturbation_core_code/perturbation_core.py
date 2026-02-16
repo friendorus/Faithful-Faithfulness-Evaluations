@@ -194,6 +194,7 @@ def perturbation_evaluation(
 
         logits = model(
             current,
+            save_attn = True,
             src_key_padding_mask=batch.get("src_key_padding_mask"),
             patch_mask=patch_mask if baseline == "attention_mask" else None
             )
