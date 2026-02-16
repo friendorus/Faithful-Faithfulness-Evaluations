@@ -88,10 +88,16 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         # --------------------------------------------------
         attn_slice = self.model.get_slice_attention()       # [B, D] # slice attention # From dino.py
         
-        if self.use_rollout:  # NEW
-            attn_maps = self.model.attention_maps  # call, from all layers
-            attn_spatial = self._attention_rollout(attn_maps)  # [B, N] - rollout across layers
-            attn_spatial = attn_spatial * attn_slice # combine spatial and slice attention
+        if self.use_rollout:
+            attn_maps = self.model.attention_maps  # list of [B*D, Heads, T, T]
+            attn_spatial = self._attention_rollout(attn_maps)  # [B*D, HW]
+
+            # Get slice weights
+            slice_weights = self.model.get_slice_attention()  # [B*D, 1, 1]
+            slice_weights = slice_weights.view(-1, 1)         # [B*D, 1]
+
+            # Apply slice weighting
+            attn_spatial = attn_spatial * slice_weights
         else:
             attn_spatial = self.model.get_attention_maps()  # [B, heads, tokens, tokens] - only last layer (already combined with slice attention in dino.py)
     
@@ -106,33 +112,45 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             sal = attn_slice[0]
     
         else:
-            # spatial attention for independent slice encoder
-            # attn_spatial shape: [B*D, Heads, HW]
+            # --------------------------------------------------
+            # spatial mode (supports rollout + non-rollout)
+            # --------------------------------------------------
 
-                       
             B, C, D, H, W = source.shape
-            
+
             patch_size = self.model.encoder.patch_embed.patch_size
             if isinstance(patch_size, tuple):
                 patch_size = patch_size[0]
-            
+
             H_p = H // patch_size
             W_p = W // patch_size
-            N_expected = H_p * W_p
-            
-            # Average over heads and slices (if applicable) to get CLS-to-patch attention
-            cls_attn = attn_spatial.mean(dim=1)  # [B, N]
+            HW_expected = H_p * W_p
 
-            if cls_attn.shape[1] != N_expected:
+            # ---------------------------------
+            # Case 1: non-rollout → [B*D, Heads, HW]
+            # ---------------------------------
+            if attn_spatial.dim() == 3:
+                attn = attn_spatial.mean(dim=1)
+
+            # ---------------------------------
+            # Case 2: rollout → [B*D, HW]
+            # ---------------------------------
+            elif attn_spatial.dim() == 2:
+                attn = attn_spatial
+
+            else:
+                raise RuntimeError(f"Unexpected attention shape {attn_spatial.shape}")
+
+            if attn.shape[1] != HW_expected:
                 raise RuntimeError(
-                    f"Patch count mismatch: expected {N_expected}, got {cls_attn.shape[1]}"
+                    f"Patch count mismatch: expected {HW_expected}, got {attn.shape[1]}"
                 )
-            
-            # Restore slice dimension
+
+            # Restore slice structure
             # [B*D, HW] → [B, D, H_p, W_p]
             attn = attn.view(B, D, H_p, W_p)
 
-            # Upsample each slice independently
+            # Upsample per slice independently
             attn = attn.view(B * D, 1, H_p, W_p)
 
             sal = F.interpolate(
@@ -142,7 +160,6 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
                 align_corners=False
             )
 
-            # Restore shape → [B, D, H, W]
             sal = sal.view(B, D, H, W)
 
             # Remove batch dimension
