@@ -106,17 +106,12 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             sal = attn_slice[0]
     
         else:
-            # spatial attention
-            # expected shape: [B, heads, tokens, tokens]
-            # use CLS → patch attention
-            # attn_spatial: [B, heads, H_p * W_p]
-                # Head-averaged CLS-to-patch attention.
-                # Assumes the attention maps correspond to the final Transformer layer
-                # and that the CLS token attends to all patch tokens.
+            # spatial attention for independent slice encoder
+            # attn_spatial shape: [B*D, Heads, HW]
 
-            cls_attn = attn_spatial.mean(dim=1)  # [B, N]
-            
+                       
             B, C, D, H, W = source.shape
+            
             patch_size = self.model.encoder.patch_embed.patch_size
             if isinstance(patch_size, tuple):
                 patch_size = patch_size[0]
@@ -125,24 +120,33 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             W_p = W // patch_size
             N_expected = H_p * W_p
             
+            # Average over heads and slices (if applicable) to get CLS-to-patch attention
+            cls_attn = attn_spatial.mean(dim=1)  # [B, N]
+
             if cls_attn.shape[1] != N_expected:
                 raise RuntimeError(
                     f"Patch count mismatch: expected {N_expected}, got {cls_attn.shape[1]}"
                 )
             
-            # reshape 2D patch grid
-            sal_2d = cls_attn[0].reshape(H_p, W_p)
-            
-            # upsample to full resolution
-            sal_2d = F.interpolate(
-                sal_2d.unsqueeze(0).unsqueeze(0),
+            # Restore slice dimension
+            # [B*D, HW] → [B, D, H_p, W_p]
+            attn = attn.view(B, D, H_p, W_p)
+
+            # Upsample each slice independently
+            attn = attn.view(B * D, 1, H_p, W_p)
+
+            sal = F.interpolate(
+                attn,
                 size=(H, W),
                 mode="bilinear",
                 align_corners=False
-            )[0, 0]
-            
-            # broadcast across slices
-            sal = sal_2d.unsqueeze(0).repeat(D, 1, 1)  # [D, H, W]
+            )
+
+            # Restore shape → [B, D, H, W]
+            sal = sal.view(B, D, H, W)
+
+            # Remove batch dimension
+            sal = sal[0]
 
     
         # --------------------------------------------------
