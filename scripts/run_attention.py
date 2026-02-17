@@ -188,29 +188,32 @@ for idx in tqdm(
 
     # ---------------- SAVE IMAGES ----------------
     if image_counter[gt] < MAX_IMG and args.mode == "spatial":
-        mid = saliency.shape[0] // 2
+        # Compute mean attention per slice
+        slice_scores = saliency.mean(dim=(1, 2))   # shape: [D] # dim 0 = slice index, dim 1 = height, dim 2 = width # dim=(1,2) means we average over height and width, leaving us with a score for each slice
+        # Get index of slice with highest attention
+        chosen_slice_index = slice_scores.argmax().item()
 
         save_image(
-            batch["source"][0, 0, mid].cpu(),
-            image_dir / f"input_{uid}.png",
+            batch["source"][0, 0, chosen_slice_index].cpu(), # [B,C, Slice]
+            image_dir / f"original_image_{uid}.png",
             normalize=True
         )
 
         save_image(
-            saliency[mid].unsqueeze(0),
+            saliency[chosen_slice_index].unsqueeze(0),
             image_dir / f"{attn_method}_{uid}.png",
             normalize=True
         )
 
-        img = batch["source"][0, 0, mid].cpu().numpy()
+        img = batch["source"][0, 0, chosen_slice_index].cpu().numpy()
         img = (img - img.min()) / (img.max() + 1e-8)
-        sal = saliency[mid].cpu().numpy()
+        sal = saliency[chosen_slice_index].cpu().numpy()
 
         overlay = overlay_heatmap(img, sal)
-        plt.imsave(image_dir / f"overlay_{uid}.png", overlay)
+        plt.imsave(image_dir / f"overlay_heatmap_{uid}.png", overlay)
 
         combined = concat_input_overlay(img, overlay)
-        plt.imsave(image_dir / f"input_overlay_{uid}.png", combined)
+        plt.imsave(image_dir / f"compare_original_overlay_{uid}.png", combined)
 
         image_counter[gt] += 1
 
