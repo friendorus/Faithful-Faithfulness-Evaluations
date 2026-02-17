@@ -96,10 +96,8 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
 
         if self.attention_method == "last_layer":
             #Final layer attention (default)
-            attn_spatial = self.model.get_attention_maps()  
-            # [B, heads, tokens, tokens] - only last layer (already combined with slice attention in dino.py)
-            cls_attn = attn_spatial[:, :, 0, 1:]  # CLS → patch attention # from [B, heads, tokens, tokens] -> [B, heads, HW]
-            cls_attn = cls_attn.mean(dim=1)  # Average over heads -> [B, HW]
+            attn_spatial = self.model.get_attention_maps()   # [B*D, Heads, HW] [32, 6, 256]
+            cls_attn = attn_spatial.mean(dim=1)  # Average over heads -> [B*D, HW] [32, 256]
 
         elif self.attention_method == "rollout":
             #Attention rollout across all layers
