@@ -28,7 +28,7 @@ parser.add_argument("--run_dir", default="./runs", type=str)
 parser.add_argument("--run_folder", required=True, type=str)
 parser.add_argument("--output_dir", default="./", type=str)
 parser.add_argument("--mode", required=True, choices=["deletion", "insertion", "negative", "all"], help="Perturbation mode to run",)
-parser.add_argument("--xai_method", required=True, choices=["attention", "attention_rollout"], help="Which saliency 'folder' to evaluate",)
+parser.add_argument("--xai_method", required=True, choices=["last_layer", "rollout","slice_weighted_rollout"], help="Which saliency 'folder' to evaluate",)
 parser.add_argument("--steps", type=int, default=20)
 parser.add_argument("--max_samples", type=int, default=-1, help="-1 = all available saliency files")
 parser.add_argument("--baseline", default="minimum-intensity", choices=["minimum-intensity", "black-3", "black-5", "black-10", 
