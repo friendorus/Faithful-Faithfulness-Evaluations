@@ -30,7 +30,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         model: Transformer-based MST model with attention layers
         mode: "spatial" produces [D, H, W], "slice" produces [D]
         resize_to_input: If True, upsamples spatial saliency to input resolution
-        use_rollout: If True, uses attention rollout for spatial attention (default: False)
+        attention_method: "last_layer", "rollout", or "slice_weighted_rollout"
 
     Produces:
     - Spatial attention saliency aligned to input volume [D, H, W]
@@ -41,14 +41,16 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         self,
         model,
         mode: str = "spatial",   # "spatial" or "slice"
+        attention_method: str = "last_layer",  # "last_layer" or "rollout" or "slice_weighted_rollout"
         resize_to_input: bool = True,
-        use_rollout: bool = False,  # NEW
     ):
         super().__init__(model)
         assert mode in ["spatial", "slice"]
+        assert attention_method in ["last_layer", "rollout", "slice_weighted_rollout"]
+
         self.mode = mode
         self.resize_to_input = resize_to_input
-        self.use_rollout = use_rollout  # NEW
+        self.attention_method = attention_method
 
     # --------------------------------------------------
     # Core Attention Saliency
@@ -87,24 +89,36 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
 
         # --------------------------------------------------
         attn_slice = self.model.get_slice_attention()       # [B, D] # slice attention # From dino.py
+
+        #=---------------------------------------------
+        # Attention Method Selection
+        #---------------------------------------------
+
+        if self.attention_method == "last_layer":
+            #Final layer attention (default)
+            attn_spatial = self.model.get_attention_maps()  
+            # [B, heads, tokens, tokens] - only last layer (already combined with slice attention in dino.py)
+            cls_attn = attn_spatial[:, :, 0, 1:]  # CLS → patch attention # from [B, heads, tokens, tokens] -> [B, heads, HW]
+            cls_attn = cls_attn.mean(dim=1)  # Average over heads -> [B, HW]
+
+        elif self.attention_method == "rollout":
+            #Attention rollout across all layers
+            attn_maps = self.model.attention_maps  # list of [B, Heads, Tokens, Tokens] on each slice - from dino.py 
+            cls_attn = self._attention_rollout(attn_maps)  # [B, HW] - rollout across all layers on each slice - from this file
         
-        if self.use_rollout:
-            attn_maps = self.model.attention_maps  # list of [B*D, Heads, T, T]
-            attn_spatial = self._attention_rollout(attn_maps)  # [B*D, HW]
-            
-
-            # ---- Get slice weights ----
-            slice_weights = self.model.get_slice_attention()  # [B*D, 1, 1]
-            
-
+        elif self.attention_method == "slice_weighted_rollout":
+            # Slice-weighted attention rollout
+            attn_maps = self.model.attention_maps  # list of [B*D, Heads, Tokens, Tokens]
+            rollout = self._attention_rollout(attn_maps)  # [B*D, HW]
+            slice_weights = attn_slice # [B, D] - slice attention from dino.py
             slice_weights = slice_weights.view(-1, 1)  # [B*D, 1]
+            cls_attn = rollout * slice_weights  # [B*D, HW] - weight spatial attention by slice attention
 
-            # ---- Apply slice weighting ----
-            attn_spatial = attn_spatial * slice_weights
         else:
-            attn_spatial = self.model.get_attention_maps()  # [B, heads, tokens, tokens] - only last layer (already combined with slice attention in dino.py)
+            raise ValueError(f"Unknown attention method: {self.attention_method}")
+
     
-        if attn_spatial is None and attn_slice is None:
+        if cls_attn is None and attn_slice is None:
             raise RuntimeError("No attention maps found. Did you pass save_attn=True?")
     
         # --------------------------------------------------
@@ -113,12 +127,12 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         if self.mode == "slice":
             # slice attention: [B, D] → [D]
             sal = attn_slice[0]
-            
-    
-        else:
-            # attn_spatial is [B*D, HW] (rollout case)
-            attn = attn_spatial  # already [32, 256]
 
+        else:
+
+            # --------------------------------------------------
+            # Spatial Mode
+            # --------------------------------------------------
             B, C, D, H, W = source.shape
 
             patch_size = self.model.encoder.patch_embed.patch_size
@@ -128,21 +142,41 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             H_p = H // patch_size
             W_p = W // patch_size
 
-            # Restore slice dimension
-            # [B*D, HW] -> [B, D, H_p, W_p]
-            attn = attn.view(B, D, H_p, W_p)
+            # ------------------------------
+            # RAW + STANDARD ROLLOUT
+            # ------------------------------
+            if self.attention_method in ["last_layer", "rollout"]:
 
-            # Upsample each slice independently
-            attn = attn.view(B * D, 1, H_p, W_p)
+                sal_2d = cls_attn[0].reshape(H_p, W_p)
 
-            sal = F.interpolate(
-                attn,
-                size=(H, W),
-                mode="bilinear",
-                align_corners=False
-            )
+                sal_2d = F.interpolate(
+                    sal_2d.unsqueeze(0).unsqueeze(0),
+                    size=(H, W),
+                    mode="bilinear",
+                    align_corners=False,
+                )[0, 0]
 
-            sal = sal.view(B, D, H, W)[0]
+                # broadcast across slices
+                sal = sal_2d.unsqueeze(0).repeat(D, 1, 1)
+
+            # ------------------------------
+            # SLICE-AWARE ROLLOUT
+            # ------------------------------
+            elif self.attention_method == "slice_weighted_rollout":
+                # Slice-weighted attention rollout
+                # cls_attn is [B*D, HW], reshape to [B, D, H_p, W_p
+                cls_attn = cls_attn.view(B, D, H_p, W_p)
+                # Upsample each slice independently
+                cls_attn = cls_attn.view(B * D, 1, H_p, W_p)
+
+                sal = F.interpolate(
+                    cls_attn,
+                    size=(H, W),
+                    mode="bilinear",
+                    align_corners=False
+                )
+
+                sal = sal.view(B, D, H, W)[0]
     
         # --------------------------------------------------
         # Normalize

@@ -83,17 +83,14 @@ python scripts/main_predict_eval.py \
 Run Script: [scripts/run_attention.py](scripts/run_attention.py)
 * Use `--only_images` to get saliency maps
 * Use `--max_image_per_class` to set limit of saliency map that you want
-* Use `--use_rollout` to use attention rollout across all Transformer encoder layers (include slice attention)
+* Use `--attention_method` to use attention rollout across all Transformer encoder layers (include slice attention)
+    * `last_layer` for Raw Attention, 
+    * `rollout` for Attention Rollout and 
+    * `slice_weighted_rollout` for Slice-aware Attention Rollout
 * Eg. 
 ``` bash
-python scripts/run_attention.py \
-    --run_folder ODELIA/DinoV2ClassifierSlice_Final \
-    --only_images \
-    --max_images_per_class 20
-```
-OR
-``` bash
-python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final --use_rollout --max_images_per_class 20
+python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final \
+    --attention_method rollout --max_images_per_class 20
 ```
 
 Outputs:

@@ -29,12 +29,14 @@ parser.add_argument('--run_folder', required=True, type=str) # e.g., 'DINOv2Clas
 parser.add_argument('--output_dir', default='./', type=str) # Root output directory
 parser.add_argument('--use_tta', action='store_true') # If set, uses TTA results
 parser.add_argument('--mode', default='spatial', choices=['spatial', 'slice']) # Attention mode
-parser.add_argument('--use_rollout', action='store_true',
-                    help="If set, uses attention rollout for spatial attention instead of only the last layer")
+parser.add_argument('--attention_method', default='last_layer', choices=['last_layer', 'rollout', 'slice_weighted_rollout'],
+                    help="Method to compute attention importance")
 parser.add_argument('--max_importance', type=int, default=-1, 
                     help="Maximum number of input images to save importance scores(-1 for no limit)")
 parser.add_argument('--max_images_per_class', type=int, default=5, 
                     help="Maximum number of images to save per class")
+parser.add_argument('--slice_choosen', default='squared_sum', choices=['mid', 'highest_mean', 'highest_max', 'top-K_mean', 'squared_sum'], 
+                    help="Method to select the slice for visualization when mode is spatial")
 parser.add_argument('--only_images', action='store_true', 
                     help="If set, only saves images, not importance scores")
 args = parser.parse_args()
@@ -78,7 +80,7 @@ def concat_input_overlay(input_2d, overlay_rgb):
 run_folder = Path(args.run_folder)
 dataset = run_folder.parent.name
 model_name = run_folder.name.split('_', 1)[0]
-attn_method = "attention_rollout" if args.use_rollout else "attention"
+attn_method = args.attention_method
 
 path_run = Path(args.run_dir) / run_folder
 results_folder = 'results_tta' if args.use_tta else 'results'
@@ -104,7 +106,7 @@ model.to(device).eval()
 
 xai = Attention_MST(model, 
                     mode=args.mode,
-                    use_rollout=args.use_rollout)
+                    attention_method=args.attention_method)
 ds_test = get_dataset(dataset, split='test')
 labels = ds_test.df[ds_test.LABEL].values
 
@@ -188,10 +190,36 @@ for idx in tqdm(
 
     # ---------------- SAVE IMAGES ----------------
     if image_counter[gt] < MAX_IMG and args.mode == "spatial":
-        # Compute mean attention per slice
-        slice_scores = saliency.mean(dim=(1, 2))   # shape: [D] # dim 0 = slice index, dim 1 = height, dim 2 = width # dim=(1,2) means we average over height and width, leaving us with a score for each slice
-        # Get index of slice with highest attention
-        chosen_slice_index = slice_scores.argmax().item()
+        # Slice selection logic based on args.slice_choosen
+        if args.slice_choosen == 'mid':
+            chosen_slice_index = saliency.shape[0] // 2
+        elif args.slice_choosen == 'highest_mean':
+            # Compute mean attention per slice
+            slice_scores = saliency.mean(dim=(1, 2))   # shape: [D] # dim 0 = slice index, dim 1 = height, dim 2 = width # dim=(1,2) means we average over height and width, leaving us with a score for each slice
+            # Get index of slice with highest attention
+            chosen_slice_index = slice_scores.argmax().item()
+        elif args.slice_choosen == 'highest_max':
+            # Highest peak intensity per slice
+            slice_scores = saliency.amax(dim=(1, 2))   # shape: [D]
+            chosen_slice_index = slice_scores.argmax().item()
+        elif args.slice_choosen == 'top-K_mean':
+            # Flatten each slice
+            D = saliency.shape[0]
+            slice_scores = []
+
+            for d in range(D):
+                flat = saliency[d].flatten()
+                topk = torch.topk(flat, k=100).values  # top 100 pixels
+                slice_scores.append(topk.mean())
+
+            slice_scores = torch.stack(slice_scores)
+            chosen_slice_index = slice_scores.argmax().item()
+        elif args.slice_choosen == 'squared_sum':
+            slice_scores = (saliency ** 2).sum(dim=(1, 2))   # shape: [D]
+            chosen_slice_index = slice_scores.argmax().item()
+        else:
+            raise ValueError(f"Unknown slice selection method: {args.slice_choosen}")
+
 
         save_image(
             batch["source"][0, 0, chosen_slice_index].cpu(), # [B,C, Slice]
