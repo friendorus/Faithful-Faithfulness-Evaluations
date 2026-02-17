@@ -91,11 +91,11 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         if self.use_rollout:
             attn_maps = self.model.attention_maps  # list of [B*D, Heads, T, T]
             attn_spatial = self._attention_rollout(attn_maps)  # [B*D, HW]
-            print(f"Attention rollout applied. Spatial attention shape: {attn_spatial.shape}")
+            
 
             # ---- Get slice weights ----
             slice_weights = self.model.get_slice_attention()  # [B*D, 1, 1]
-            print(f"Slice weights shape (raw): {slice_weights.shape}")
+            
 
             slice_weights = slice_weights.view(-1, 1)  # [B*D, 1]
 
@@ -113,7 +113,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         if self.mode == "slice":
             # slice attention: [B, D] → [D]
             sal = attn_slice[0]
-            print(f"Slice attention saliency shape: {sal.shape}")
+            
     
         else:
             # attn_spatial is [B*D, HW] (rollout case)
