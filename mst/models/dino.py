@@ -238,30 +238,32 @@ class DinoV2ClassifierSlice(BasicClassifier):
                         # attn shape: [D, num_heads, N_tokens, N_tokens] where N_tokens = 1 + H_p*W_p + num_regs
                         # D is the batch dimension (number of slices)
                         
-                        D_mask, H_p, W_p = self.patch_mask.shape
-                        num_registers = 4 if self.use_registers else 0
+                        D_mask, H_p, W_p = self.patch_mask.shape # D_mask should match B (number of slices) in attn
+                        num_registers = 4 if self.use_registers else 0 # Assuming 4 register tokens if using registers, adjust as needed
                         
                         # For each slice (batch item), create its mask
                         batch_masks = []
                         for d in range(B):  # B = D in this case
                             # Get the mask for this slice
                             slice_mask = self.patch_mask[d % D_mask]  # [H_p, W_p]
-                            slice_mask_flat = slice_mask.flatten().bool()  # [H_p*W_p]
+                            slice_mask_flat = slice_mask.flatten().bool()  # convert from [H_p, W_p] --> [H_p*W_p]
                             
                             # Build full token mask: [CLS | patches | registers]
-                            cls_mask = torch.tensor([True], device=slice_mask_flat.device, dtype=torch.bool)
-                            reg_mask = torch.ones(num_registers, device=slice_mask_flat.device, dtype=torch.bool) if num_registers > 0 else torch.tensor([], device=slice_mask_flat.device, dtype=torch.bool)
-                            full_mask = torch.cat([cls_mask, slice_mask_flat, reg_mask])  # [N]
+                            cls_mask = torch.tensor([True], device=slice_mask_flat.device, dtype=torch.bool) # CLS token is always stay active
+                            # Register tokens are always kept
+                            reg_mask = torch.ones(num_registers, device=slice_mask_flat.device, dtype=torch.bool) if num_registers > 0 else torch.tensor([], device=slice_mask_flat.device, dtype=torch.bool) 
+                            # Combine masks: CLS token + patch tokens + register tokens
+                            full_mask = torch.cat([cls_mask, slice_mask_flat, reg_mask])  # [N] [ CLS | patch1 | patch2 | ... | registers ] 
                             batch_masks.append(full_mask)
                         
-                        mask_tensor = torch.stack(batch_masks)  # [B, N]
+                        mask_tensor = torch.stack(batch_masks)  # [B, N] # Stack for all slices in the batch
                         
-                        # Apply mask: attn [B, num_heads, N, N], mask [B, N]
-                        mask_attn = mask_tensor.unsqueeze(1).unsqueeze(2).float()  # [B, 1, 1, N]
-                        attn = attn * mask_attn
+                        # Apply mask to attn [B, num_heads, N, N], mask [B, N]
+                        mask_attn = mask_tensor.unsqueeze(1).unsqueeze(2).float()  # [B, 1, 1, N] # Broadcast to match attn shape because attention shape is [B, num_heads, N, N]
+                        attn = attn * mask_attn # if mask is False (0), the attention will be zeroed out, if True (1), it remains unchanged
                         
                         # Renormalize
-                        attn = attn / (attn.sum(dim=-1, keepdim=True) + 1e-8)
+                        attn = attn / (attn.sum(dim=-1, keepdim=True) + 1e-8) # Normalize so that attention weights sum to 1 after masking
                     
                     if callable(self2.attn_drop):
                         attn = self2.attn_drop(attn)
