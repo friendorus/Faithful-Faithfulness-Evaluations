@@ -141,9 +141,9 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             W_p = W // patch_size
 
             # ------------------------------
-            # RAW + STANDARD ROLLOUT
+            # STANDARD ROLLOUT
             # ------------------------------
-            if self.attention_method in ["last_layer", "rollout"]:
+            if self.attention_method == "rollout":
 
                 sal_2d = cls_attn[0].reshape(H_p, W_p)
 
@@ -160,8 +160,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # ------------------------------
             # SLICE-AWARE ROLLOUT
             # ------------------------------
-            elif self.attention_method == "slice_weighted_rollout":
-                # Slice-weighted attention rollout
+            elif self.attention_method in ["last_layer", "slice_weighted_rollout"]:
                 # cls_attn is [B*D, HW], reshape to [B, D, H_p, W_p
                 cls_attn = cls_attn.view(B, D, H_p, W_p)
                 # Upsample each slice independently
