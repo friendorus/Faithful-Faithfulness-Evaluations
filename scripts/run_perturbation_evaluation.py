@@ -196,21 +196,8 @@ for mode in modes:
         predicted_confidences = confidences[:, predicted_class]
         predicted_confidences_normalized = confidences_normalized[:, predicted_class]
 
-            # DEBUG: check post-preprocessing intensity range (print once)
+        #intensity.append([uid, batch["source"].min().item(), batch["source"].mean().item(), batch["source"].max().item()])
 
-        # print ("Post-preprocessing intensity stats:",
-        #     "min =", batch["source"].min().item(),
-        #     "mean =", batch["source"].mean().item(),
-        #     "max =", batch["source"].max().item())
-        intensity.append([uid, batch["source"].min().item(), batch["source"].mean().item(), batch["source"].max().item()])
-        # print ("----------------------------------------------")
-            
-        # print(f"Predicted class is {predicted_class}")
-        # print(f"Progression percentage is {percentages}")
-        # print(f"Confidence score is {confidences}")
-        # print(f"Normalized Confidence score is {confidences_normalized}")
-        # print(f"Predicted class confidence: {predicted_confidences}")
-        # print(f"Normalized predicted class confidence: {predicted_confidences_normalized}")
 
 
         rows.append({
@@ -251,7 +238,7 @@ for mode in modes:
 
     df = pd.DataFrame(rows)
 
-    per_sample_csv = results_root / f"{mode}_{args.xai_method}_{args.baseline}.csv"
+    per_sample_csv = results_root / "csv_files" / f"{mode}_{args.xai_method}_{args.baseline}.csv"
     df.to_csv(per_sample_csv, index=False)
 
     summary = (
@@ -259,19 +246,15 @@ for mode in modes:
         .agg(["mean", "std", "count"])
         .reset_index()
     )
-
-    summary_csv = results_root / f"{mode}_{args.xai_method}_{args.baseline}_summary.csv"
+    # ========================================================
+    # Save summary
+    # ========================================================
+    summary_csv = results_root / "csv_files" / f"{mode}_{args.xai_method}_{args.baseline}_summary.csv"
     summary.to_csv(summary_csv, index=False)
-
-    df_intensity = pd.DataFrame(intensity, columns=["UID", "min", "mean", "max"])
-    intensity_csv = results_root / f"{mode}_{args.xai_method}_{args.baseline}_intensity_stats.csv"
-    df_intensity.to_csv(intensity_csv, index=False)
 
     print(f"\n{mode.capitalize()} finished.")
     print(f"Per-sample CSV: {per_sample_csv}")
     print(f"Summary CSV:    {summary_csv}")
-    print(f"Intensity stats CSV: {intensity_csv}")
     print(summary)
-
 
 print("\nAll requested evaluations completed.")
