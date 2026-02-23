@@ -14,11 +14,12 @@ BASELINES = [
     #"zero",
     #"mean",
     "gaussian_blur",
-    "attention_mask",
+    #"attention_mask",
 ]
 
 XAI_METHODS = [
-    "last_layer",
+    "gradcam",
+    #"last_layer",
     #"rollout",
     #"slice_weighted_rollout",
 ]
