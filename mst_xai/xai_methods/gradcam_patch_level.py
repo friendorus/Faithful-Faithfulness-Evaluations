@@ -48,7 +48,7 @@ class GradCAM_MST(BaseSaliencyMethod):
         patch_block.register_full_backward_hook(backward_patch)
 
         # ---------- Slice-level hook ----------
-        slice_block = self.model.slice_fusion.layers[0].norm1
+        slice_block = self.model.slice_fusion.layers[-1].norm1
 
         def forward_slice(module, input, output):
             self.slice_activations = output  # (B, D, C)
