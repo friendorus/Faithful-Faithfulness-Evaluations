@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -239,6 +240,7 @@ for mode in modes:
     df = pd.DataFrame(rows)
 
     per_sample_csv = results_root / "csv_files" / f"{mode}_{args.xai_method}_{args.baseline}.csv"
+    os.makedirs(os.path.dirname(per_sample_csv), exist_ok=True)
     df.to_csv(per_sample_csv, index=False)
 
     summary = (
@@ -250,6 +252,7 @@ for mode in modes:
     # Save summary
     # ========================================================
     summary_csv = results_root / "csv_files" / f"{mode}_{args.xai_method}_{args.baseline}_summary.csv"
+    os.makedirs(os.path.dirname(summary_csv), exist_ok=True)
     summary.to_csv(summary_csv, index=False)
 
     print(f"\n{mode.capitalize()} finished.")
