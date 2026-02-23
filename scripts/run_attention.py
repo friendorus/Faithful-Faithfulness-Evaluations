@@ -49,7 +49,8 @@ args = parser.parse_args()
 def get_dataset(name, split):
     if name == 'ODELIA':
         return ODELIA_Dataset3D(split=split)
-    raise ValueError(f"Unknown dataset: {name}")
+    else:
+        raise ValueError(f"Unknown dataset: {name}")
 
 
 # ============================================================
@@ -100,13 +101,15 @@ MAX_IMG = args.max_images_per_class
 # ============================================================
 # Model & Dataset
 # ============================================================
-
-model = DinoV2ClassifierSlice.load_best_checkpoint(path_run)
+ModelClass = DinoV2ClassifierSlice
+model = ModelClass.load_best_checkpoint(path_run)
 model.to(device).eval()
 
 xai = Attention_MST(model, 
                     mode=args.mode,
                     attention_method=args.attention_method)
+
+# ------------ Load dataset ----------------
 ds_test = get_dataset(dataset, split='test')
 labels = ds_test.df[ds_test.LABEL].values
 
@@ -186,7 +189,7 @@ for idx in tqdm(
     else:
         if not pt_path.exists():
             continue
-        saliency = torch.load(pt_path, map_location=device)
+        saliency = torch.load(pt_path, map_location=device,weights_only=True)
 
     # ---------------- SAVE IMAGES ----------------
     if image_counter[gt] < MAX_IMG and args.mode == "spatial":

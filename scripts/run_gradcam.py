@@ -31,6 +31,8 @@ parser.add_argument('--max_importance', type=int, default=-1,
                     help='-1 = all test samples')
 parser.add_argument('--max_images_per_class', type=int, default=5,
                     help='Images per class (qualitative only)')
+parser.add_argument('--slice_choosen', default='squared_sum', choices=['mid', 'highest_mean', 'highest_max', 'top-K_mean', 'squared_sum'], 
+                    help="Method to select the slice for visualization when mode is spatial")
 parser.add_argument('--only_images', action='store_true',
                     help='Only generate images from saved importance')
 
@@ -91,14 +93,14 @@ def concat_input_overlay(input_2d, overlay_rgb):
 
 run_folder = Path(args.run_folder)
 
-dataset = run_folder.parent.name    # DUKE / LIDC / MRNet / Local
+dataset = run_folder.parent.name    # DUKE / LIDC / MRNet / ODELIA
 model_name = run_folder.name.split('_', 1)[0]
 
 path_run = Path(args.run_dir) / run_folder
 
 results_folder = 'results_tta' if args.use_tta else 'results'
 
-path_out = Path(args.output_dir) / results_folder / run_folder
+path_out = Path(args.output_dir) / results_folder / run_folder / "saliency_results"
 path_out.mkdir(parents=True, exist_ok=True)
 
 # Grad-CAM root
@@ -118,15 +120,15 @@ MAX_IMG = args.max_images_per_class
 
 ModelClass = DinoV2ClassifierSlice
 model = ModelClass.load_best_checkpoint(path_run)
-
 model.to(device)
 model.eval()
+
 gradcam = GradCAM_MST(model)
 
 # ------------ Load dataset ----------------
 ds_test = get_dataset(dataset, split='test')
 labels = ds_test.df[ds_test.LABEL].values
-# print(set(labels))
+
 
 # -------------
 # Define Index map from sampling image
@@ -235,7 +237,7 @@ for idx in tqdm(
         if not pt_path.exists():
             continue
 
-    saliency = torch.load(pt_path, map_location=device)
+    saliency = torch.load(pt_path, map_location=device,weights_only=True)
 
 
     
@@ -245,47 +247,58 @@ for idx in tqdm(
     if image_counter[gt] < MAX_IMG:
 
        
-        mid = saliency.shape[0] // 2
+        # Slice selection logic based on args.slice_choosen
+        if args.slice_choosen == 'mid':
+            chosen_slice_index = saliency.shape[0] // 2
+        elif args.slice_choosen == 'highest_mean':
+            # Compute mean attention per slice
+            slice_scores = saliency.mean(dim=(1, 2))   # shape: [D] # dim 0 = slice index, dim 1 = height, dim 2 = width # dim=(1,2) means we average over height and width, leaving us with a score for each slice
+            # Get index of slice with highest attention
+            chosen_slice_index = slice_scores.argmax().item()
+        elif args.slice_choosen == 'highest_max':
+            # Highest peak intensity per slice
+            slice_scores = saliency.amax(dim=(1, 2))   # shape: [D]
+            chosen_slice_index = slice_scores.argmax().item()
+        elif args.slice_choosen == 'top-K_mean':
+            # Flatten each slice
+            D = saliency.shape[0]
+            slice_scores = []
+
+            for d in range(D):
+                flat = saliency[d].flatten()
+                topk = torch.topk(flat, k=100).values  # top 100 pixels
+                slice_scores.append(topk.mean())
+
+            slice_scores = torch.stack(slice_scores)
+            chosen_slice_index = slice_scores.argmax().item()
+        elif args.slice_choosen == 'squared_sum':
+            slice_scores = (saliency ** 2).sum(dim=(1, 2))   # shape: [D]
+            chosen_slice_index = slice_scores.argmax().item()
+        else:
+            raise ValueError(f"Unknown slice selection method: {args.slice_choosen}")
+
 
         save_image(
-            batch['source'][0, 0, mid].cpu(),
-            image_dir / f'input_{uid}.png',
+            batch["source"][0, 0, chosen_slice_index].cpu(), # [B,C, Slice]
+            image_dir / f"original_image_{uid}.png",
             normalize=True
         )
 
         save_image(
-            saliency[mid].unsqueeze(0),
-            image_dir / f'gradcam_{uid}.png',
+            saliency[chosen_slice_index].unsqueeze(0),
+            image_dir / f"gradcam_{uid}.png",
             normalize=True
         )
 
-        # --- Prepare slice for overlay ---
-        img_slice = batch['source'][0, 0, mid].detach().cpu().numpy()
-        img_slice = (img_slice - img_slice.min()) / (img_slice.max() + 1e-8)
-        
-        sal_slice = saliency[mid].detach().cpu().numpy()
-        
-        overlay = overlay_heatmap(
-            img_slice,
-            sal_slice,
-            alpha=0.6
-        )
-        
-        plt.imsave(
-            image_dir / f'overlay_{uid}.png',
-            overlay
-        )
+        img = batch["source"][0, 0, chosen_slice_index].cpu().numpy()
+        img = (img - img.min()) / (img.max() + 1e-8)
+        sal = saliency[chosen_slice_index].cpu().numpy()
 
-        combined = concat_input_overlay(
-            input_2d=img_slice,
-            overlay_rgb=overlay
-        )
-        
-        plt.imsave(
-            image_dir / f"input_overlay_{uid}.png",
-            combined
-        )
+        overlay = overlay_heatmap(img, sal)
+        plt.imsave(image_dir / f"overlay_heatmap_{uid}.png", overlay)
 
+        combined = concat_input_overlay(img, overlay)
+        plt.imsave(image_dir / f"compare_original_overlay_{uid}.png", combined)
 
         image_counter[gt] += 1
 
