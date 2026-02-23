@@ -8,6 +8,10 @@ import torch.nn.functional as F
 from einops import rearrange
 from .extern.dinov2.vision_transformer import vit_small, vit_base, vit_large, vit_giant2
 
+from mst.utils.ignore_warning import suppress_mst_warnings
+suppress_mst_warnings()
+
+
 def slices2rgb(tensor):
     # [B, 1, D, H, W] -> [B*D//3, 3, H, W]
     B, C, D, H, W = tensor.shape

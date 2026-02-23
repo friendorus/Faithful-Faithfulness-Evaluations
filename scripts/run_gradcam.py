@@ -6,7 +6,11 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import sys
 from pathlib import Path
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(PROJECT_ROOT))
+
 from collections import defaultdict
 from torchvision.utils import save_image
 
@@ -14,7 +18,7 @@ from torchvision.utils import save_image
 from mst.models.dino import DinoV2ClassifierSlice
 from mst_xai.xai_methods.gradcam_patch_level import GradCAM_MST
 from mst_xai.xai_methods.gradcam_slice_level import GradCAM_Slice
-from MST.mst.data.datasets.dataset_3d_odelia import Local_Dataset3D
+from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
 
 
 
@@ -36,14 +40,8 @@ args = parser.parse_args()
 
 
 def get_dataset(name, split):
-    if name == 'DUKE':
-        return DUKE_Dataset3D(split=split)
-    elif name == 'LIDC':
-        return LIDC_Dataset3D(split=split)
-    elif name == 'MRNet':
-        return MRNet_Dataset3D(split=split)
-    elif name == 'Local':
-        return Local_Dataset3D(split=split)
+    if name == 'ODELIA':
+        return ODELIA_Dataset3D(split=split)
     else:
         raise ValueError(f"Unknown dataset: {name}")
 

@@ -2,98 +2,142 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
+
+
 from mst_xai.xai_methods.base import BaseSaliencyMethod
 
 
 class GradCAM_MST(BaseSaliencyMethod):
     """
-    Grad-CAM for Medical Slice Transformer (DinoV2ClassifierSlice)
+    Hierarchical Grad-CAM for Medical Slice Transformer
 
     Produces:
-    - Normalized saliency map aligned to input volume [D, H, W]
-    - Optional visualization overlays
+    - Slice-level importance
+    - Spatial heatmap per slice
+    - Combined final saliency aligned with final class decision
     """
 
-    def __init__(self, model, target_layer="encoder"):
+    def __init__(self, model):
         super().__init__(model)
-        self.target_layer = target_layer
-        self.gradients = None
-        self.activations = None
+
+        # DINO (patch-level)
+        self.patch_activations = None
+        self.patch_gradients = None
+
+        # Slice transformer (slice-level)
+        self.slice_activations = None
+        self.slice_gradients = None
+
         self._register_hooks()
 
     # --------------------------------------------------
     # Hooks
     # --------------------------------------------------
     def _register_hooks(self):
-        """
-        Hook the LAST DINO attention block (token-level)
-        """
-        self.gradients = None
-        self.activations = None
-    
-        # Last transformer block
-        block = self.model.encoder.blocks[-1]
-    
-        def forward_hook(module, input, output):
-            # output: (B*D, N, C)
-            self.activations = output
-    
-        def backward_hook(module, grad_input, grad_output):
-            # grad_output[0]: (B*D, N, C)
-            self.gradients = grad_output[0]
-    
-        block.register_forward_hook(forward_hook)
-        block.register_full_backward_hook(backward_hook)
 
+        # ---------- Patch-level hook ----------
+        patch_block = self.model.encoder.blocks[-1].norm1
+
+        def forward_patch(module, input, output):
+            self.patch_activations = output  # (B*D, N, C)
+
+        def backward_patch(module, grad_input, grad_output):
+            self.patch_gradients = grad_output[0]
+
+        patch_block.register_forward_hook(forward_patch)
+        patch_block.register_full_backward_hook(backward_patch)
+
+        # ---------- Slice-level hook ----------
+        slice_block = self.model.slice_fusion.layers[0].norm1
+
+        def forward_slice(module, input, output):
+            self.slice_activations = output  # (B, D, C)
+
+        def backward_slice(module, grad_input, grad_output):
+            self.slice_gradients = grad_output[0]
+
+        slice_block.register_forward_hook(forward_slice)
+        slice_block.register_full_backward_hook(backward_slice)
 
     # --------------------------------------------------
     # Core Grad-CAM
     # --------------------------------------------------
     def generate(self, batch, target_class: int):
+
         self.model.zero_grad()
         source = batch["source"].to(self.model.device)
-    
+
         B, C, D, H, W = source.shape
-        patch_size = 14  # DINOv2
-    
+        patch_size = 14
+
         logits = self.model(source, save_attn=False)
         score = logits[:, target_class].sum()
-        score.backward(retain_graph=True)
-    
-        # NOW shapes are correct
-        acts = self.activations        # [(B*D), N+1, C]
-        grads = self.gradients         # [(B*D), N+1, C]
-    
-        # Remove CLS token
-        acts = acts[:, 1:, :]
-        grads = grads[:, 1:, :]
-    
-        # Grad-CAM weights
-        weights = grads.mean(dim=1)        # average over tokens → [(B*D), C]
-        cam = torch.relu(
-            (acts * weights.unsqueeze(1)).sum(dim=-1)
-        )                                  # → [(B*D), N]
+        score.backward()
 
-    
-        # Patch grid
+        # ===============================
+        # PATCH-LEVEL CAM
+        # ===============================
+
+        acts = self.patch_activations      # (B*D, N, C) # Already test - not zero
+        grads = self.patch_gradients        # Already test - not zero
+
+        acts = acts[:, 1:, :]              # remove CLS
+        grads = grads[:, 1:, :]
+
+        weights = grads.mean(dim=2)        # (B*D, C)
+
+        cam_patch = (acts * weights.unsqueeze(-1)).sum(dim=2)                              # (B*D, N_patches)
+
         h_p = H // patch_size
         w_p = W // patch_size
-    
-        cam = cam.view(B, D, h_p, w_p)
-    
-        # Upsample to voxel space
-        cam = torch.nn.functional.interpolate(
-            cam.unsqueeze(1),
+
+        cam_patch = cam_patch.view(B, D, h_p, w_p)
+
+
+        # ===============================
+        # SLICE-LEVEL CAM
+        # ===============================
+
+        # remove slice CLS token (there are 33 slices but only 32 have patch-level maps)
+        slice_acts = self.slice_activations[:, 1:, :] # (B, 32, 284)
+        slice_grads = self.slice_gradients[:, 1:, :]
+
+        slice_weights = slice_grads.mean(dim=1)  # (B, C)
+
+        cam_slice = (
+            (slice_acts * slice_weights.unsqueeze(1)).sum(dim=-1)
+        )                                        # (B, D)
+
+        cam_slice = cam_slice / (cam_slice.max(dim=1, keepdim=True)[0] + 1e-8)
+        assert cam_patch.shape[1] == cam_slice.shape[1]
+
+
+        # ===============================
+        # HIERARCHICAL COMBINATION
+        # ===============================
+
+        cam_slice = cam_slice.unsqueeze(-1).unsqueeze(-1)  # (B, D, 1, 1)
+
+        cam_combined = cam_patch * cam_slice               # weight spatial maps
+        cam_combined = torch.relu(cam_combined)
+
+        # ===============================
+        # Upsample to voxel resolution
+        # ===============================
+
+        cam_combined = F.interpolate(
+            cam_combined.unsqueeze(1),
             size=(D, H, W),
             mode="trilinear",
             align_corners=False
         ).squeeze(1)
-    
-        cam = cam.squeeze(0)
-        cam = cam - cam.min()
-        cam = cam / (cam.max() + 1e-8)
-    
-        return cam
+
+        cam_combined = cam_combined.squeeze(0)
+
+        cam_combined = cam_combined - cam_combined.min()
+        cam_combined = cam_combined / (cam_combined.max() + 1e-8)
+
+        return cam_combined
 
 
 

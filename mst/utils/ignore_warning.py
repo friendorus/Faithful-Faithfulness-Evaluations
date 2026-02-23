@@ -11,3 +11,7 @@ def suppress_mst_warnings(all_warnings=False):
     warnings.filterwarnings("ignore", message="'pin_memory' argument is set as true")
     warnings.filterwarnings("ignore", message="A module that was compiled using NumPy 1.x")
     warnings.filterwarnings("ignore", message=".*_ARRAY_API not found.*")
+    warnings.filterwarnings(
+    "ignore",
+    message="enable_nested_tensor is True, but self.use_nested_tensor is False"
+)
