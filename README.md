@@ -22,7 +22,7 @@ pip install -e .
 
 
 ### Data set
-* Add your ODELIA dataset to [mst/data/datasets/datasets/ODELIA](mst/data/datasets/datasets/ODELIA)
+* Add your ODELIA dataset to [mst/data/datasets/ODELIA_dataset](mst/data/datasets/ODELIA_dataset)
 
 
 ## Run Training
