@@ -1,6 +1,16 @@
 # XAI for Medical Slice Transformer
+
 by Peachapong Poolpol
 (This project is cloned from [Muller Franzes Github](https://github.com/mueller-franzes/MST))
+
+## Get things set up
+
+create a .env file containing these entries:
+
+```code
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxx
+DATASET_PATH=./mst/data/datasets/ODELIA_datasets
+```
 
 ## MST – Explainable AI & Faithfulness Evaluation
 
@@ -11,31 +21,37 @@ conda env create -f environment.yaml
 ```
 
 ### Step 2 - Install `requirements.txt`
+
 ```bash
 pip install -r requirements.txt
 ```
 
-### Step 3 
+### Step 3
+
 ```bash
 pip install -e .
 ```
 
-
 ### Data set
-* Add your ODELIA dataset to [mst/data/datasets/datasets/ODELIA](mst/data/datasets/datasets/ODELIA)
 
+- Add your ODELIA dataset to [mst/data/datasets/datasets/ODELIA](mst/data/datasets/datasets/ODELIA)
 
 ## Run Training
+
 ### Train Models
+
 Run Script: [scripts/main_train.py](scripts/main_train.py)
-* Eg. `python scripts/main_train.py --dataset ODELIA --model DinoV2ClassifierSlice`
-* Use `--model` to select:
-    * ResNet = 3D ResNet50, 
-    * ResNetSliceTrans = MST-ResNet, 
-    * DinoV2ClassifierSlice = MST-DINOv2  
+
+- Eg. `python scripts/main_train.py --dataset ODELIA --model DinoV2ClassifierSlice`
+- Use `--model` to select:
+  - ResNet = 3D ResNet50,
+  - ResNetSliceTrans = MST-ResNet,
+  - DinoV2ClassifierSlice = MST-DINOv2
 
 ## Run Predict & Evaluate Performance
+
 Run Script: [scripts/main_predict.py](scripts/main_predict.py)
+
 ```bash
 python scripts/main_predict.py  \
     --run_folder ODELIA/DinoV2ClassifierSlice_Final \
@@ -44,10 +60,11 @@ python scripts/main_predict.py  \
     --use_tta
 ```
 
-* Use `--get_attention` to compute saliency maps
-* Use `--get_segmentation` to compute segmentation masks and DICE score 
-* Use `--use_tta` to enable Test Time Augmentation
-Outputs:
+- Use `--get_attention` to compute saliency maps
+- Use `--get_segmentation` to compute segmentation masks and DICE score
+- Use `--use_tta` to enable Test Time Augmentation
+  Outputs:
+
 ```bash
 results/
 └── ODELIA/DinoV2ClassifierSlice_Final/
@@ -58,8 +75,11 @@ results/
 ```
 
 ## Run Predict with new clean file
+
 Run Script: [scripts/main_predict_eval.py](scripts/main_predict_eval.py)
+
 ### No TTA - Basic Run
+
 ```bash
 python scripts/main_predict_eval.py \
     --dataset ODELIA \
@@ -67,6 +87,7 @@ python scripts/main_predict_eval.py \
 ```
 
 ### With TTA
+
 ```bash
 python scripts/main_predict_eval.py \
     --dataset ODELIA \
@@ -74,26 +95,31 @@ python scripts/main_predict_eval.py \
     --use_tta
 ```
 
+---
 
------------------------------------------------------------------------------------------------------------------
------------------------------------------------------------------------------------------------------------------
+---
+
 # Run XAI method
+
 ## Run Attention to get Importance
 
 Run Script: [scripts/run_attention.py](scripts/run_attention.py)
-* Use `--only_images` to get saliency maps
-* Use `--max_image_per_class` to set limit of saliency map that you want
-* Use `--attention_method` to use attention rollout across all Transformer encoder layers (include slice attention)
-    * `last_layer` for Raw Attention, 
-    * `rollout` for Attention Rollout and 
-    * `slice_weighted_rollout` for Slice-aware Attention Rollout
-* Eg. 
-``` bash
+
+- Use `--only_images` to get saliency maps
+- Use `--max_image_per_class` to set limit of saliency map that you want
+- Use `--attention_method` to use attention rollout across all Transformer encoder layers (include slice attention)
+  - `last_layer` for Raw Attention,
+  - `rollout` for Attention Rollout and
+  - `slice_weighted_rollout` for Slice-aware Attention Rollout
+- Eg.
+
+```bash
 python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final \
     --attention_method rollout --max_images_per_class 20
 ```
 
 Outputs:
+
 ```bash
 results/
 └── ODELIA/DinoV2ClassifierSlice_Final/
@@ -128,8 +154,11 @@ results/
 ```
 
 ## Evaluation Test
+
 Run Script: [scripts/run_perturbation_evaluation.py](scripts/run_perturbation_evaluation.py)
-* Eg.
+
+- Eg.
+
 ```bash
 python scripts/run_perturbation_evaluation.py \
   --run_folder ODELIA/DinoV2ClassifierSlice_Final \
@@ -139,26 +168,28 @@ python scripts/run_perturbation_evaluation.py \
   --steps 20 \
   --save_curves
 ```
-* Use "--mode" with choices for `deletion`, `insertion`, `negative` or `all`
-    * `deletion` is for Deletion: Initail image is original image and replace from highest importance-scored patch to lowest
-    * `insertion` is for Insertion: Initial image is blank image and replace from highest importance-scored patch to lowest
-    * `negative` is for Negative Perturbation test: Initial image is original image and replace from *lowest* importance-scored patch to highest
-    * `all` is for all methods.
 
-* Use "--baseline" with choices for `minimum-intensity`, `black-3`, `black-5`, `black-10`, `white-5`, `white-10`, `zero`, `mean`, `zero_conf`, `gaussian_blur`,`attention_mask`
-    * All "--baseline" mean what do you want to replace that patch with except `attention_mask`
-    * Use "--baseline `attention_mask`" will use Attention Masking instead of replacing
-    * `minimum-intensity` mean using the lowest intensity of that image as replacing patch
-    * `black-[number]` mean replace with specific value for z score that less than 0 (assume as black)
-    * `white-[number]` mean replace with specific value for z score that more than 0 (assume as white)
-    * `zero` mean replace with z score = 0
-    * `mean` mean replace with mean value of the image
-    * `zero_conf` mean replace with additional patch that assume it's zero confidences
-    * `gaussian_blur` mean replace with gaussian blur in this case set kernel_size == 9 and sigma == 2
+- Use "--mode" with choices for `deletion`, `insertion`, `negative` or `all`
+  - `deletion` is for Deletion: Initail image is original image and replace from highest importance-scored patch to lowest
+  - `insertion` is for Insertion: Initial image is blank image and replace from highest importance-scored patch to lowest
+  - `negative` is for Negative Perturbation test: Initial image is original image and replace from _lowest_ importance-scored patch to highest
+  - `all` is for all methods.
 
-* Use "`--save_curves`" will save numpy files for each image to use to calculate avarage later
+- Use "--baseline" with choices for `minimum-intensity`, `black-3`, `black-5`, `black-10`, `white-5`, `white-10`, `zero`, `mean`, `zero_conf`, `gaussian_blur`,`attention_mask`
+  - All "--baseline" mean what do you want to replace that patch with except `attention_mask`
+  - Use "--baseline `attention_mask`" will use Attention Masking instead of replacing
+  - `minimum-intensity` mean using the lowest intensity of that image as replacing patch
+  - `black-[number]` mean replace with specific value for z score that less than 0 (assume as black)
+  - `white-[number]` mean replace with specific value for z score that more than 0 (assume as white)
+  - `zero` mean replace with z score = 0
+  - `mean` mean replace with mean value of the image
+  - `zero_conf` mean replace with additional patch that assume it's zero confidences
+  - `gaussian_blur` mean replace with gaussian blur in this case set kernel_size == 9 and sigma == 2
+
+- Use "`--save_curves`" will save numpy files for each image to use to calculate avarage later
 
 Outputs:
+
 ```bash
 results/
 ├── ODELIA/DinoV2ClassifierSlice_Final/evaluation_results/deletion
@@ -173,30 +204,34 @@ results/
     ├── negative_attention_baseline.csv
     ├── negative_attention_summary_baseline.csv
     └── negative_curves/attention/[baseline] (optional)
-    
+
 ```
+
 #### Create ROC Curve for Deletion
+
 Run file [results/ODELIA/DinoV2ClassifierSlice_Final/evaluation/CreateCurve_deletion.ipynb](results/ODELIA/DinoV2ClassifierSlice_Final/evaluation/CreateCurve_deletion.ipynb)
 
 #### Create ROC Curve for Insertion
+
 Run file [results/ODELIA/DinoV2ClassifierSlice_Final/evaluation/CreateCurve_insertion.ipynb](results/ODELIA/DinoV2ClassifierSlice_Final/evaluation/CreateCurve_insertion.ipynb)
 
+---
 
-
----------------------------------------------------------------------------------------------------------------------------------------
 This repository extends the MST (Multi-Slice Transformer) framework with explainable AI (XAI) methods and faithfulness evaluation for 3D medical images.
 The pipeline is designed to be:
-* model-faithful (ViT / patch-based)
-* method-agnostic (supports multiple XAI methods)
-* reproducible (saliency saved once, reused for evaluation)
+
+- model-faithful (ViT / patch-based)
+- method-agnostic (supports multiple XAI methods)
+- reproducible (saliency saved once, reused for evaluation)
 
 ## Project Structure
+
 ```bash
 mst_xai/
 ├── xai_methods/
 │   ├── base.py                     # BaseSaliencyMethod interface
 │   ├── gradcam_patch_level.py      # Grad-CAM (baseline, not MST-faithful)
-│   ├── gradcam_slice_level.py 
+│   ├── gradcam_slice_level.py
 │   └── attention.py                # Attention-based saliency (Raw Attnetion OR Attention Rollout)
 │
 ├── evaluation_methods/
@@ -210,8 +245,8 @@ mst_xai/
 │   └── load_saliency.py          # Load .pt / .npy saliency files
 │
 scripts/
-├── main_train.py            
-├── main_predict.py       
-├── run_attention.py   
-└── run_perturbation_evaluation.py      
+├── main_train.py
+├── main_predict.py
+├── run_attention.py
+└── run_perturbation_evaluation.py
 ```

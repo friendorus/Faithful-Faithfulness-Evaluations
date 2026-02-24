@@ -1,16 +1,23 @@
+from tqdm import tqdm
+from torch.utils.data import DataLoader
+import pandas as pd
+from tqdm.auto import tqdm
+from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
+from mst.data.datasets.dataset_3d_mrnet import MRNet_Dataset3D
+from mst.data.datasets.dataset_3d_lidc import LIDC_Dataset3D
+from mst.data.datasets.dataset_3d_duke import DUKE_Dataset3D
+from mst.models.dino import DinoV2ClassifierSlice
+from mst.models.resnet import ResNet, ResNetSliceTrans
+import torch
+from pathlib import Path
+import platform
+import os
 from mst.utils.ignore_warning import suppress_mst_warnings
 suppress_mst_warnings()
 
 
-from pathlib import Path
-import torch
-
-
-
 # --------------------------------------------------
 # Import supported MST model architectures.
-from mst.models.resnet import ResNet, ResNetSliceTrans
-from mst.models.dino import DinoV2ClassifierSlice
 
 
 def get_model_class(name):
@@ -26,10 +33,6 @@ def get_model_class(name):
 
 # --------------------------------------------------
 # Import supported MST dataset classes.
-from mst.data.datasets.dataset_3d_duke import DUKE_Dataset3D
-from mst.data.datasets.dataset_3d_lidc import LIDC_Dataset3D
-from mst.data.datasets.dataset_3d_mrnet import MRNet_Dataset3D
-from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
 
 
 def get_dataset_class(name):
@@ -57,10 +60,12 @@ def load_model(model_name, checkpoint_path, device):
 
     return model
 
+
 # --------------------------------------------------
 # Batch prediction utility [Predict Batch with Optional Test-Time Augmentation (TTA)]
 # import torch
-from tqdm.auto import tqdm
+
+
 def predict_batch(model, batch, device, use_tta=False):
 
     source = batch["source"].to(device)
@@ -78,8 +83,8 @@ def predict_batch(model, batch, device, use_tta=False):
         if use_tta:
             flip_dims = [
                 (2,), (3,), (4,),
-                (2,3), (2,4), (3,4),
-                (2,3,4)
+                (2, 3), (2, 4), (3, 4),
+                (2, 3, 4)
             ]
 
             for dims in tqdm(flip_dims, desc="TTA Flips", leave=False):
@@ -90,11 +95,9 @@ def predict_batch(model, batch, device, use_tta=False):
 
     return pred
 
+
 # --------------------------------------------------
 # Inference runner utility [Run Inference on Dataset and Collect Results]
-import pandas as pd
-from torch.utils.data import DataLoader
-from tqdm import tqdm
 
 
 def run_inference(
@@ -109,6 +112,8 @@ def run_inference(
     DatasetClass = get_dataset_class(dataset_name)
     dataset = DatasetClass(split="test")
 
+    num_workers = 0 if platform.system() == "Darwin" else 8
+
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
@@ -121,7 +126,8 @@ def run_inference(
     for batch in tqdm(loader, desc="Running Inference", dynamic_ncols=True):
 
         target = batch["target"]
-        uid = batch["uid"][0] if isinstance(batch["uid"], list) else str(batch["uid"].item())
+        uid = batch["uid"][0] if isinstance(
+            batch["uid"], list) else str(batch["uid"].item())
 
         probs = predict_batch(model, batch, device, use_tta=use_tta).cpu()
 
