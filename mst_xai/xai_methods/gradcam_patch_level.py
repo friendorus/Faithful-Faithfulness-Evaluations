@@ -84,7 +84,7 @@ class GradCAM_MST(BaseSaliencyMethod):
         acts = acts[:, 1:, :]              # remove CLS
         grads = grads[:, 1:, :]
 
-        weights = grads.mean(dim=2)        # (B*D, C)
+        weights = grads.mean(dim=1)        # (B*D, C)
 
         cam_patch = (acts * weights.unsqueeze(-1)).sum(dim=2)                              # (B*D, N_patches)
 

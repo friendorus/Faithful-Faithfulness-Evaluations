@@ -5,16 +5,16 @@ import sys
 RUN_FOLDER = "ODELIA/DinoV2ClassifierSlice_Final"
 
 BASELINES = [
-    "minimum-intensity",
+    #"minimum-intensity",
     #"black-3",
-    "black-5",
+    #"black-5",
     #"black-10",
-    "white-5",
+    #"white-5",
     #"white-10",
     #"zero",
     #"mean",
-    "gaussian_blur",
-    #"attention_mask",
+    #"gaussian_blur",
+    "attention_mask",
 ]
 
 XAI_METHODS = [
