@@ -96,8 +96,13 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
 
         if self.attention_method == "last_layer":
             #Final layer attention (default)
-            attn_spatial = self.model.get_attention_maps()   # [B*D, Heads, HW] [32, 6, 256]
-            cls_attn = attn_spatial.mean(dim=1)  # Average over heads -> [B*D, HW] [32, 256]
+            #attn_spatial = self.model.get_attention_maps()   # [B*D, Heads, HW] [32, 6, 256]
+            # cls_attn = attn_spatial.mean(dim=1)  # Average over heads -> [B*D, HW] [32, 256]
+            attn_spatial = self.model.get_plane_attention()   # [B*D, Heads, HW] [32, 6, 256]
+            slice_weights = attn_slice
+            slice_weights = slice_weights.view(-1, 1, 1)  # [B*D, 1]
+            cls_attn = attn_spatial * slice_weights  # Weight spatial attention by slice attention
+            cls_attn = cls_attn.mean(dim=1)  
 
         elif self.attention_method == "rollout":
             #Attention rollout across all layers
@@ -107,10 +112,11 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         elif self.attention_method == "slice_weighted_rollout":
             # Slice-weighted attention rollout
             attn_maps = self.model.attention_maps  # list of [B*D, Heads, Tokens, Tokens]
-            rollout = self._attention_rollout(attn_maps)  # [B*D, HW]
+            rollout = self._attention_rollout(attn_maps)  # [B*D, Heads, HW]
             slice_weights = attn_slice # [B, D] - slice attention from dino.py
-            slice_weights = slice_weights.view(-1, 1)  # [B*D, 1]
-            cls_attn = rollout * slice_weights  # [B*D, HW] - weight spatial attention by slice attention
+            attn_slice = slice_weights.view(-1, 1, 1)  # [B*D, 1, 1] - reshape to match rollout dimensions
+            cls_attn = rollout * slice_weights   #[B*D, Heads, HW] - weight spatial attention by slice attention
+            cls_attn = cls_attn.mean(dim=1) # [B*D, HW] - average over heads
 
         else:
             raise ValueError(f"Unknown attention method: {self.attention_method}")
@@ -230,19 +236,42 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
 
         return overlay
     
-    def _attention_rollout(self, attn_maps):
-        rollout = None
-        for attn in attn_maps:
-            # attn: [B, Heads, Tokens, Tokens]
-            attn = attn.mean(dim=1)
-            # Add residual connection
-            I = torch.eye(attn.size(-1), device=attn.device)
-            attn = attn + I
-            # Normalize
-            attn = attn / attn.sum(dim=-1, keepdim=True)
-            rollout = attn if rollout is None else attn @ rollout
-        return rollout[:, 0, 1:]  # CLS → patch attention # [B, HW]
+    # def _attention_rollout(self, attn_maps):
+    #     rollout = None
+    #     for attn in attn_maps:
+    #         # attn: [B, Heads, Tokens, Tokens]
+    #         attn = attn.mean(dim=1)
+    #         # Add residual connection
+    #         I = torch.eye(attn.size(-1), device=attn.device)
+    #         attn = attn + I
+    #         # Normalize
+    #         attn = attn / attn.sum(dim=-1, keepdim=True)
+    #         rollout = attn if rollout is None else attn @ rollout
+    #     return rollout[:, 0, 1:]  # CLS → patch attention # [B, HW]
 
+
+    def _attention_rollout(self, attn_maps):
+
+        rollout = None
+
+        for attn in attn_maps:
+            # [B, Heads, Tokens, Tokens]
+
+            I = torch.eye(attn.size(-1), device=attn.device).unsqueeze(0).unsqueeze(0)
+
+            attn = attn + I
+            attn = attn / attn.sum(dim=-1, keepdim=True)
+
+            rollout = attn if rollout is None else torch.matmul(attn, rollout)
+
+        # CLS → patches
+        img_slice = slice(5, None) if self.model.use_registers else slice(1, None)
+
+        rollout = rollout[:, :, 0, img_slice]   # [B, Heads, HW]
+
+        rollout = rollout / rollout.sum(dim=-1, keepdim=True)
+
+        return rollout
 
     # --------------------------------------------------
     # Utils
