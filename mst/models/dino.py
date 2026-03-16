@@ -94,7 +94,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
                                                  weights=f"../dinov3/dinov3_convnext_base_pretrain_lvd1689m-801f2ba9.pth",
                                                  trust_repo=True, skip_validation=True)
                 else:
-                    raise NotImplemendedError()
+                    raise NotImplementedError()
                     
             elif dino == 'medsiglip':
                 raise NotImplementedError()
