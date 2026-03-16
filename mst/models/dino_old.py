@@ -1,10 +1,15 @@
+from SimpleITK import Slice
 import torch 
 from .base_model import BasicClassifier
 # from transformers import Dinov2Model
 from .utils.transformer_blocks import TransformerEncoderLayer
 import torch.nn as nn
+import torch.nn.functional as F
 from einops import rearrange
 from .extern.dinov2.vision_transformer import vit_small, vit_base, vit_large, vit_giant2
+
+from mst.utils.ignore_warning import suppress_mst_warnings
+suppress_mst_warnings()
 
 
 def slices2rgb(tensor):
@@ -26,6 +31,8 @@ def slices2rgb(tensor):
     
     return tensor 
 
+   
+
 
 class DinoV2ClassifierSlice(BasicClassifier):
     def __init__(
@@ -45,7 +52,6 @@ class DinoV2ClassifierSlice(BasicClassifier):
             enable_trans = True, # Deprecated 
             slice_fusion='transformer',
             freeze=False,
-            dino='v2',
             **kwargs
         ):
         super().__init__(in_ch, out_ch, spatial_dims=spatial_dims, optimizer_kwargs=optimizer_kwargs, **kwargs)
@@ -55,51 +61,12 @@ class DinoV2ClassifierSlice(BasicClassifier):
         self.use_registers = use_registers
         self.slice_fusion_type = slice_fusion
 
-        if in_ch == 1 or in_ch == 3:
-            self.input_proj = None
-        else:
-            self.input_proj = nn.Conv2d(in_ch, 3, kernel_size=1, bias=False)
-        
         if pretrained:
-            if dino == 'v2':
-                if use_registers:
-                    self.encoder = torch.hub.load('facebookresearch/dinov2', f'dinov2_vit{model_size}14_reg',
-                                                 trust_repo=True, skip_validation=True)
-                else:
-                    self.encoder = torch.hub.load('facebookresearch/dinov2', f'dinov2_vit{model_size}14',
-                                                 trust_repo=True, skip_validation=True)
-            elif dino == 'v3-vit':
-                if model_size == 's':
-                    self.encoder = torch.hub.load('facebookresearch/dinov3', f'dinov3_vits16plus',
-                                                 weights=f"../dinov3/dinov3_vits16plus_pretrain_lvd1689m-4057cbaa.pth",
-                                                 trust_repo=True, skip_validation=True)
-                elif model_size == 'b':
-                    self.encoder = torch.hub.load('facebookresearch/dinov3', f'dinov3_vitb16',
-                                                     weights=f"../dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth",
-                                                     trust_repo=True, skip_validation=True)             
-                else:
-                    raise NotImplementedError()
-                    
-            elif dino == 'v3-convnext':
-                if model_size == 'tiny':
-                    self.encoder = torch.hub.load('facebookresearch/dinov3', f'dinov3_convnext_{model_size}',
-                                                 weights=f"../dinov3/dinov3_convnext_{model_size}_pretrain_lvd1689m-21b726bb.pth",
-                                                 trust_repo=True, skip_validation=True)  
-                elif model_size == 'small':
-                    self.encoder = torch.hub.load('facebookresearch/dinov3', f'dinov3_convnext_{model_size}',
-                                                 weights=f"../dinov3/dinov3_convnext_small_pretrain_lvd1689m-296db49d.pth",
-                                                 trust_repo=True, skip_validation=True)
-                elif model_size == 'base':
-                    self.encoder = torch.hub.load('facebookresearch/dinov3', f'dinov3_convnext_{model_size}',
-                                                 weights=f"../dinov3/dinov3_convnext_base_pretrain_lvd1689m-801f2ba9.pth",
-                                                 trust_repo=True, skip_validation=True)
-                else:
-                    raise NotImplemendedError()
-                    
-            elif dino == 'medsiglip':
-                raise NotImplementedError()
+            if use_registers:
+                self.encoder = torch.hub.load('facebookresearch/dinov2', f'dinov2_vit{model_size}14_reg')
+            else:
+                self.encoder = torch.hub.load('facebookresearch/dinov2', f'dinov2_vit{model_size}14')
         else:
-            assert dino == 'v2'
             Model = {'s': vit_small, 'b': vit_base, 'l':vit_large, 'g':vit_giant2 }[model_size]
             self.encoder = Model(patch_size=14, num_register_tokens=0)
    
@@ -108,14 +75,8 @@ class DinoV2ClassifierSlice(BasicClassifier):
             for param in self.encoder.parameters():
                 param.requires_grad = False
 
-        if dino == 'v3-convnext':
-            if model_size in ['tiny', 'small']:
-                emb_ch = 768
-            elif model_size == 'base':
-                emb_ch = 1024
-        else:
-            emb_ch = self.encoder.num_features
-            
+    
+        emb_ch = self.encoder.num_features 
         if use_bottleneck:
             self.bottleneck = nn.Linear(emb_ch, emb_ch//4)
             emb_ch = emb_ch//4 
@@ -128,7 +89,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
             self.slice_fusion = nn.TransformerEncoder(
                 encoder_layer=TransformerEncoderLayer(
                     d_model=emb_ch,
-                    nhead=12 if emb_ch == 768 else 16, 
+                    nhead=12, 
                     dim_feedforward=1*emb_ch,
                     dropout=0.0,
                     batch_first=True,
@@ -145,8 +106,9 @@ class DinoV2ClassifierSlice(BasicClassifier):
             pass 
 
         self.linear = nn.Linear(emb_ch, out_ch) if enable_linear else nn.Identity()
-        
-    def forward(self, source, save_attn=False, src_key_padding_mask=None, **kwargs):   
+
+
+    def forward(self, source, save_attn=False, src_key_padding_mask=None, patch_mask=None, **kwargs):   
 
         if save_attn:
             fastpath_enabled = torch.backends.mha.get_fastpath_enabled()
@@ -156,31 +118,20 @@ class DinoV2ClassifierSlice(BasicClassifier):
             self.hooks = []
             self.register_hooks()
 
+        # Store patch_mask for use in attention hooks if provided
+        self.patch_mask = patch_mask
+
         x = source.to(self.device) # [B, C, D, H, W]
         B, C, *_ = x.shape
-        
-        if C == 1:
-            x = rearrange(x, 'b c d h w -> (b d c) h w')  # [(B*D), H, W]
-            x = x[:, None]
-            x = x.repeat(1, 3, 1, 1)                       # [(B*D), 3, H, W]
-        elif C == 3:
-            x = rearrange(x, 'b c d h w -> (b d) c h w')  # [(B*D), 3, H, W]
-        else:
-            x = rearrange(x, 'b c d h w -> (b d) c h w')  # [(B*D), C, H, W]
-            x = self.input_proj(x)                          # [(B*D), 3, H, W]
-        
-        x = self.encoder(x)  # [(B*D), 3, H, W] -> [(B*D), out]
-        
-        #x = source.to(self.device) # [B, C, D, H, W]
-        #B, C, *_ = x.shape
-        
-        #x = rearrange(x, 'b c d h w -> (b d c) h w')
-        #x = x[:, None]
-        #x = x.repeat(1, 3, 1, 1) # Gray to RGB
+ 
 
-        ## x = slices2rgb(x) # [B, 1, D, H, W] -> [B*D//3, 3, H, W]
+        x = rearrange(x, 'b c d h w -> (b d c) h w')
+        x = x[:, None]
+        x = x.repeat(1, 3, 1, 1) # Gray to RGB
 
-        #x = self.encoder(x) # [(B D), C, H, W] -> [(B D), out] 
+        # x = slices2rgb(x) # [B, 1, D, H, W] -> [B*D//3, 3, H, W]
+
+        x = self.encoder(x) # [(B D), C, H, W] -> [(B D), out] 
 
         # Bottleneck: force to focus on relevant features for classification 
         if hasattr(self, 'bottleneck'):
@@ -193,6 +144,8 @@ class DinoV2ClassifierSlice(BasicClassifier):
             pos = torch.arange(0, x.shape[1], dtype=torch.long, device=x.device)
             x += self.slice_pos_emb(pos)
         
+        
+        # Slice Transformer
         if self.slice_fusion_type == 'transformer':
             x = torch.concat([self.cls_token.repeat(B, 1, 1), x], dim=1)
  
@@ -218,6 +171,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
         x = self.linear(x) 
         return x
     
+    
     def get_slice_attention(self):
         attention_map_slice = self.attention_maps_slice[-1] # [B, Heads, 1+D(+regs), 1+D(+regs)]
         attention_map_slice = attention_map_slice[:, :, 0, 1:] # [B, Heads, D]
@@ -235,20 +189,21 @@ class DinoV2ClassifierSlice(BasicClassifier):
         return attention_map_slice
 
     def get_plane_attention(self):
-        attention_map_dino = self.attention_maps[-1] # [B*D, Heads, 1+HW, 1+HW]
+        attention_map_dino = self.attention_maps[-1] # [B*D, Heads, 1+HW, 1+HW] #[-1] = Last Transformer Layer
         img_slice = slice(5, None) if self.use_registers else slice(1, None) # see https://github.com/facebookresearch/dinov2/blob/e1277af2ba9496fbadf7aec6eba56e8d882d1e35/dinov2/models/vision_transformer.py#L264 
         attention_map_dino = attention_map_dino[:,:, 0, img_slice] # [B*D, Heads, HW]
         attention_map_dino[:,:,0] = 0
         attention_map_dino /= attention_map_dino.sum(dim=-1, keepdim=True)
         return attention_map_dino
 
-    def get_attention_maps(self):
+    def get_attention_maps(self): # Combined attention map
+        """ Calculate the combined attention map from slice attention and plane attention (only last attention layer). """
         attention_map_dino = self.get_plane_attention()
         attention_map_slice = self.get_slice_attention()
         
         attention_map = attention_map_slice*attention_map_dino
         return attention_map
-    
+
     def get_attention_cls(self):
         """ Calculate the attention in the first layer starting from the CLS token in the last layer. """
         attention_to_cls = self.attention_maps[-1]
@@ -280,7 +235,43 @@ class DinoV2ClassifierSlice(BasicClassifier):
                     attn = q @ k.transpose(-2, -1)
            
                     attn = attn.softmax(dim=-1)
-                    attn = self2.attn_drop(attn)
+                    
+                    # Apply patch mask to attention if available
+                    if self.patch_mask is not None:
+                        # patch_mask shape: [D, H_p, W_p] - ALREADY at patch resolution from perturbation_core
+                        # attn shape: [D, num_heads, N_tokens, N_tokens] where N_tokens = 1 + H_p*W_p + num_regs
+                        # D is the batch dimension (number of slices)
+                        
+                        D_mask, H_p, W_p = self.patch_mask.shape # D_mask should match B (number of slices) in attn
+                        num_registers = 4 if self.use_registers else 0 # Assuming 4 register tokens if using registers, adjust as needed
+                        
+                        # For each slice (batch item), create its mask
+                        batch_masks = []
+                        for d in range(B):  # B = D in this case
+                            # Get the mask for this slice
+                            slice_mask = self.patch_mask[d % D_mask]  # [H_p, W_p]
+                            slice_mask_flat = slice_mask.flatten().bool()  # convert from [H_p, W_p] --> [H_p*W_p]
+                            
+                            # Build full token mask: [CLS | patches | registers]
+                            cls_mask = torch.tensor([True], device=slice_mask_flat.device, dtype=torch.bool) # CLS token is always stay active
+                            # Register tokens are always kept
+                            reg_mask = torch.ones(num_registers, device=slice_mask_flat.device, dtype=torch.bool) if num_registers > 0 else torch.tensor([], device=slice_mask_flat.device, dtype=torch.bool) 
+                            # Combine masks: CLS token + patch tokens + register tokens
+                            full_mask = torch.cat([cls_mask, slice_mask_flat, reg_mask])  # [N] [ CLS | patch1 | patch2 | ... | registers ] 
+                            batch_masks.append(full_mask)
+                        
+                        mask_tensor = torch.stack(batch_masks)  # [B, N] # Stack for all slices in the batch
+                        
+                        # Apply mask to attn [B, num_heads, N, N], mask [B, N]
+                        mask_attn = mask_tensor.unsqueeze(1).unsqueeze(2).float()  # [B, 1, 1, N] # Broadcast to match attn shape because attention shape is [B, num_heads, N, N]
+                        attn = attn * mask_attn # if mask is False (0), the attention will be zeroed out, if True (1), it remains unchanged
+                        
+                        # Renormalize
+                        attn = attn / (attn.sum(dim=-1, keepdim=True) + 1e-8) # Normalize so that attention weights sum to 1 after masking
+                    
+                    if callable(self2.attn_drop):
+                        attn = self2.attn_drop(attn)
+
 
                     x = (attn @ v).transpose(1, 2).reshape(B, N, C)
                     x = self2.proj(x)
@@ -308,6 +299,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
                 enable_attention(mod)
                 self.hooks.append(mod.register_forward_hook(append_attention_maps))
 
+
     def deregister_hooks(self):
         for handle in self.hooks:
             handle.remove()
@@ -321,3 +313,5 @@ class DinoV2ClassifierSlice(BasicClassifier):
         for _, mod in self.slice_fusion.named_modules():
             if isinstance(mod, nn.MultiheadAttention):
                 mod.forward = mod.foward_orig
+
+
