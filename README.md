@@ -49,22 +49,40 @@ Run Script: [scripts/main_train.py](scripts/main_train.py)
   - ResNetSliceTrans = MST-ResNet,
   - DinoV2ClassifierSlice = MST-DINOv2
 
-## Run Predict & Evaluate Performance
 
-Run Script: [scripts/main_predict.py](scripts/main_predict.py)
+
+
+
+## Run Predict with new clean file
+
+Run Script: [scripts/main_predict_eval.py](scripts/main_predict_eval.py)
+
+### Command-Line Arguments
+
+| Argument | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `--dataset` | `str` | Yes | — | Name of the dataset to use for inference (e.g., `ODELIA`). |
+| `--model_name` | `str` | No | `DinoV2ClassifierSlice` | Model architecture name. |
+| `--run_dir` | `str` | No | `./runs` | Base directory containing experiment runs. |
+| `--run_folder` | `str` | Yes | — | Name of the specific experiment folder inside `run_dir`. |
+| `--checkpoint_name` | `str` | No | `None` | Path or filename of the checkpoint to load. Can be a file or directory. |
+| `--output_dir` | `str` | No | `./` | Directory where prediction results will be saved. |
+| `--use_tta` | `flag` | No | `False` | Enable test-time augmentation (TTA) during inference. |
+
+### No TTA - Basic Run
 
 ```bash
-python scripts/main_predict.py  \
-    --run_folder ODELIA/DinoV2ClassifierSlice_Final \
-    --dataset ODELIA  \
-    --get_attention  \
-    --use_tta
+python scripts/main_predict_eval.py \
+    --dataset ODELIA \
+    --run_folder ODELIA/DinoV2ClassifierSlice_Final
 ```
 
-- Use `--get_attention` to compute saliency maps
-- Use `--get_segmentation` to compute segmentation masks and DICE score
-- Use `--use_tta` to enable Test Time Augmentation
-  Outputs:
+```bash
+python scripts/main_predict_eval.py \
+    --dataset ODELIA \
+    --run_folder NewModel
+    --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt
+```
 
 ```bash
 results/
@@ -73,18 +91,6 @@ results/
     ├── main_predict.py.txt
     ├── result.csv
     └── roc_multiclass.png
-```
-
-## Run Predict with new clean file
-
-Run Script: [scripts/main_predict_eval.py](scripts/main_predict_eval.py)
-
-### No TTA - Basic Run
-
-```bash
-python scripts/main_predict_eval.py \
-    --dataset ODELIA \
-    --run_folder ODELIA/DinoV2ClassifierSlice_Final
 ```
 
 ### With TTA
