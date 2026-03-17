@@ -14,17 +14,20 @@ sys.path.append(str(PROJECT_ROOT))
 from collections import defaultdict
 from torchvision.utils import save_image
 
-
-from mst.models.dino import DinoV2ClassifierSlice
+# from mst.models.dino import DinoV2ClassifierSlice
 from mst_xai.xai_methods.gradcam_patch_level import GradCAM_MST
-from MST.Archeived.gradcam_slice_level import GradCAM_Slice
+# from MST.Archeived.gradcam_slice_level import GradCAM_Slice
 from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
+from mst.inference.predictor import load_model
 
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--dataset", type=str, required=True, help="Name of the dataset to use")
+parser.add_argument("--model_name", default= "DinoV2ClassifierSlice",type=str, help="Name of the model architecture")
 parser.add_argument('--run_dir', default='./runs', type=str)
 parser.add_argument('--run_folder', required=True, type=str)
+parser.add_argument("--checkpoint_name", default= None ,type=str, help="Path to the model checkpoint (file or directory)")
 parser.add_argument('--output_dir', default='./', type=str)
 parser.add_argument('--use_tta', action='store_true')
 parser.add_argument('--max_importance', type=int, default=-1,
@@ -93,13 +96,10 @@ def concat_input_overlay(input_2d, overlay_rgb):
 
 run_folder = Path(args.run_folder)
 
-dataset = run_folder.parent.name    # DUKE / LIDC / MRNet / ODELIA
-model_name = run_folder.name.split('_', 1)[0]
-
-path_run = Path(args.run_dir) / run_folder
-
+dataset = args.dataset    # DUKE / LIDC / MRNet / ODELIA
+model_name = args.model_name
+path_run = Path(args.run_dir) / run_folder/ args.checkpoint_name if args.checkpoint_name else Path(args.run_dir) / run_folder
 results_folder = 'results_tta' if args.use_tta else 'results'
-
 path_out = Path(args.output_dir) / results_folder / run_folder / "saliency_results"
 path_out.mkdir(parents=True, exist_ok=True)
 
@@ -118,10 +118,11 @@ MAX_IMG = args.max_images_per_class
 # 1. Load trained model
 # -------------------------
 
-ModelClass = DinoV2ClassifierSlice
-model = ModelClass.load_best_checkpoint(path_run)
-model.to(device)
-model.eval()
+model = load_model(
+    model_name=model_name,
+    checkpoint_path=path_run,
+    device=device,
+)
 
 gradcam = GradCAM_MST(model)
 

@@ -69,7 +69,7 @@ Run Script: [scripts/main_predict_eval.py](scripts/main_predict_eval.py)
 | `--output_dir` | `str` | No | `./` | Directory where prediction results will be saved. |
 | `--use_tta` | `flag` | No | `False` | Enable test-time augmentation (TTA) during inference. |
 
-### No TTA - Basic Run
+### Usage - No TTA - Basic Run
 
 ```bash
 python scripts/main_predict_eval.py \
@@ -83,6 +83,8 @@ python scripts/main_predict_eval.py \
     --run_folder NewModel
     --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt
 ```
+
+output:
 
 ```bash
 results/
@@ -107,6 +109,10 @@ python scripts/main_predict_eval.py \
 ---
 
 # Run XAI method
+
+```bash
+python scripts/run_gradcam.py --run_folder NewModel --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt --dataset ODELIA --max_images_per_class 20
+```
 
 ## Run Attention to get Importance
 

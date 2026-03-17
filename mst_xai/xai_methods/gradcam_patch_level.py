@@ -79,14 +79,15 @@ class GradCAM_MST(BaseSaliencyMethod):
         # ===============================
 
         acts = self.patch_activations      # (B*D, N, C) # Already test - not zero
-        grads = self.patch_gradients        # Already test - not zero
+        grads = self.patch_gradients
+        # Already test - not zero
 
-        acts = acts[:, 1:, :]              # remove CLS
+        acts = acts[:, 1:, :]            # remove CLS
         grads = grads[:, 1:, :]
 
         weights = grads.mean(dim=1)        # (B*D, C)
 
-        cam_patch = (acts * weights.unsqueeze(-1)).sum(dim=2)                              # (B*D, N_patches)
+        cam_patch = (acts * weights.unsqueeze(1)).sum(dim=2)                              # (B*D, N_patches)
 
         h_p = H // patch_size
         w_p = W // patch_size
