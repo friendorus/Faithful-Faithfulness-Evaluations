@@ -22,8 +22,8 @@ def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     run_folder = Path(args.run_folder)
-    model_name = run_folder.name.split("_", 1)[0]
-    path_run = Path(args.run_dir) / run_folder
+    model_name = args.model_name
+    path_run = Path(args.run_dir) / run_folder/ args.checkpoint_path if args.checkpoint_path else Path(args.run_dir) / run_folder
     results_path = Path(args.output_dir) / "results" / run_folder
     results_path.mkdir(parents=True, exist_ok=True)
 
@@ -59,6 +59,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--dataset", type=str, required=True, help="Name of the dataset to use")
+    parser.add_argument("--model_name", default= "DinoV2ClassifierSlice",type=str, help="Name of the model architecture")
+    parser.add_argument("--checkpoint_path", default= None ,type=str, help="Path to the model checkpoint (file or directory)")
     parser.add_argument("--run_dir", default="./runs", type=str)
     parser.add_argument("--run_folder", type=str, required=True, help="Folder name of the run")
     parser.add_argument("--output_dir", type=str, default="./", help="Directory to save predictions")

@@ -75,6 +75,7 @@ simpleitk==2.5.3
 six==1.17.0
 smmap==5.0.2
 sympy==1.14.0
+termcolor==3.3.0
 threadpoolctl==3.6.0
 torchmetrics==1.8.2
 typer==0.24.1

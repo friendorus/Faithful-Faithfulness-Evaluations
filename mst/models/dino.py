@@ -76,7 +76,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
                 elif model_size == 'b':
                     self.encoder = torch.hub.load('facebookresearch/dinov3', f'dinov3_vitb16',
                                                      weights=f"../dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth",
-                                                     trust_repo=True, skip_validation=True)             
+                                                     trust_repo=True, skip_validation=True)         
                 else:
                     raise NotImplementedError()
                     

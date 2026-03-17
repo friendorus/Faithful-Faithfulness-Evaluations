@@ -54,8 +54,39 @@ def load_model(model_name, checkpoint_path, device):
 
     ModelClass = get_model_class(model_name)
 
-    model = ModelClass.load_best_checkpoint(str(checkpoint_path))
+    # Case 1: user passed a checkpoint file
+    if checkpoint_path.is_file():
+
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        # Lightning checkpoint
+        if isinstance(checkpoint, dict) and "pytorch-lightning_version" in checkpoint:
+            model = ModelClass.load_from_checkpoint(str(checkpoint_path))
+        # Non-Lightning checkpoint
+        else:
+            model = ModelClass(
+                in_ch=3,
+                out_ch=3,
+                dino='v3-vit',
+                model_size= 'b'
+            )
+            # Lightning-like state_dict
+            if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+                model.load_state_dict(checkpoint["state_dict"])
+            # Training checkpoint (your case)
+            elif isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+                model.load_state_dict(checkpoint["model_state_dict"])
+            # Raw weights
+            else:
+                model.load_state_dict(checkpoint)
+
+    # Case 2: user passed a run directory -> load best checkpoint
+    elif checkpoint_path.is_dir():
+        model = ModelClass.load_best_checkpoint(str(checkpoint_path))
+    else:
+        raise FileNotFoundError(f"Checkpoint path not found: {checkpoint_path}")
+
     model.to(device)
+
     model.eval()
 
     return model
