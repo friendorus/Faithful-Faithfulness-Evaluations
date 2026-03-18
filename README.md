@@ -111,7 +111,22 @@ python scripts/main_predict_eval.py \
 # Run XAI method
 
 ```bash
-python scripts/run_xai.py --xai_method gradcam --run_folder NewModel --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt --dataset ODELIA --max_images_per_class 20
+python scripts/run_xai.py \
+  --xai_method gradcam \
+  --run_folder NewModel \
+  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA \
+  --max_images_per_class 20
+```
+
+```bash
+python scripts/run_xai.py \
+  --xai_method attention \
+  --attention_method last_layer\
+  --run_folder NewModel \
+  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA \
+  --max_images_per_class 20
 ```
 
 ## Run Attention to get Importance
@@ -127,8 +142,9 @@ Run Script: [scripts/run_attention.py](scripts/run_attention.py)
 - Eg.
 
 ```bash
-python scripts/run_attention.py --run_folder ODELIA/DinoV2ClassifierSlice_Final \
-    --attention_method rollout --max_images_per_class 20
+python scripts/run_attention.py \
+  --run_folder ODELIA/DinoV2ClassifierSlice_Final \
+  --attention_method rollout --max_images_per_class 20
 ```
 
 Outputs:

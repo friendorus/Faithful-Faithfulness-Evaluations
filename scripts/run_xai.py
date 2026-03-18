@@ -181,6 +181,7 @@ def overlay_heatmap(image, saliency, alpha=0.5):
         1 - alpha,
         0
     )
+
     return overlay
 
 def concat_input_overlay(input_2d, overlay_rgb):
@@ -204,7 +205,7 @@ def concat_input_overlay(input_2d, overlay_rgb):
 def save_images(batch, saliency, uid, method_name, args, image_dir):
     idx = select_slice(saliency, args.slice_choosen)
 
-    img = batch["source"][0, 0, idx].detach().cpu().numpy()
+    img = batch["source"][0, 0, idx].cpu().numpy()
     img = (img - img.min()) / (img.max() + 1e-8)
     sal = saliency[idx].detach().cpu().numpy()
 
@@ -273,12 +274,16 @@ def run_pipeline(args):
             np.save(npy_dir / f"{uid}_importance.npy", sal_np)
 
             row = {
-                "UID": uid,
-                "xai_method": method_name,
-                "class": gt,
-                "mean": float(sal_np.mean()),
-                "max": float(sal_np.max()),
-                "std": float(sal_np.std())
+                'UID': uid,
+                'dataset': args.dataset,
+                'model': args.model_name,
+                'xai_method': args.xai_method,
+                'class': gt,
+                'mean_importance': float(sal_np.mean()),
+                'max_importance': float(sal_np.max()),
+                'std_importance': float(sal_np.std()),
+                'top_1pct_mean': float(sal_np[sal_np >= np.quantile(sal_np, 0.99)].mean()),
+                'importance_path': str(pt_path)
             }
 
             rows.append(row)

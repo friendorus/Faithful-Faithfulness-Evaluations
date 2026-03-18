@@ -84,22 +84,29 @@ class GradCAM_MST(BaseSaliencyMethod):
         grads = self.patch_gradients
 
 
-        if self.patch_gradients is None:
-            raise RuntimeError("Patch gradients not captured")
+        # ----------------------------------
+        # Remove CLS + extra tokens (robust)
+        # ----------------------------------
 
-        if self.patch_gradients.abs().sum() == 0:
-            raise RuntimeError("Patch gradients are zero — wrong hook layer")
-        
-        # remove CLS
-        acts = acts[:, 1:, :]
-        grads = grads[:, 1:, :]
+        # detect extra tokens once
+        if not hasattr(self, "num_extra_tokens"):
+            with torch.no_grad():
+                x_enc = source[:1]              # (1,1,D,H,W)
+                x_enc = x_enc[:, :, 0]          # take one slice → (1,1,H,W)
+                x_enc = x_enc.repeat(1, 3, 1, 1)  # → (1,3,H,W)
 
-        # compute spatial tokens
-        num_patches = (H // patch_size) * (W // patch_size)
+                out = self.model.encoder.forward_features(x_enc)
 
-        # keep only spatial tokens
-        acts = acts[:, :num_patches, :]
-        grads = grads[:, :num_patches, :]
+            if "x_storage_tokens" in out:
+                self.num_extra_tokens = out["x_storage_tokens"].shape[1] #DinoV3 VitB having 5 extra tokens (CLS + 4 storage tokens)
+            elif "x_norm_regtokens" in out:
+                self.num_extra_tokens = out["x_norm_regtokens"].shape[1] #DinoV2 VitS having 5 extra tokens (CLS + 4 reg tokens) if it's use register
+            else:
+                self.num_extra_tokens = 0
+
+        # remove CLS + extra tokens
+        acts = acts[:, 1 + self.num_extra_tokens:, :]
+        grads = grads[:, 1 + self.num_extra_tokens:, :]
 
         weights = grads.mean(dim=1)        # (B*D, C)
 
