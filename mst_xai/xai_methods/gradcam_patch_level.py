@@ -36,6 +36,7 @@ class GradCAM_MST(BaseSaliencyMethod):
     def _register_hooks(self):
 
         # ---------- Patch-level hook ----------
+        # patch_block = self.model.encoder.norm
         patch_block = self.model.encoder.blocks[-1].norm1
 
         def forward_patch(module, input, output):
@@ -68,7 +69,8 @@ class GradCAM_MST(BaseSaliencyMethod):
         source = batch["source"].to(self.model.device)
 
         B, C, D, H, W = source.shape
-        patch_size = 14
+        #patch_size = 14 if using V2
+        patch_size = self.model.encoder.patch_embed.patch_size[0]
 
         logits = self.model(source, save_attn=False)
         score = logits[:, target_class].sum()
@@ -80,10 +82,24 @@ class GradCAM_MST(BaseSaliencyMethod):
 
         acts = self.patch_activations      # (B*D, N, C) # Already test - not zero
         grads = self.patch_gradients
-        # Already test - not zero
 
-        acts = acts[:, 1:, :]            # remove CLS
+
+        if self.patch_gradients is None:
+            raise RuntimeError("Patch gradients not captured")
+
+        if self.patch_gradients.abs().sum() == 0:
+            raise RuntimeError("Patch gradients are zero — wrong hook layer")
+        
+        # remove CLS
+        acts = acts[:, 1:, :]
         grads = grads[:, 1:, :]
+
+        # compute spatial tokens
+        num_patches = (H // patch_size) * (W // patch_size)
+
+        # keep only spatial tokens
+        acts = acts[:, :num_patches, :]
+        grads = grads[:, :num_patches, :]
 
         weights = grads.mean(dim=1)        # (B*D, C)
 
