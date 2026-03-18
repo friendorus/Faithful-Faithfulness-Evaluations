@@ -111,7 +111,7 @@ python scripts/main_predict_eval.py \
 # Run XAI method
 
 ```bash
-python scripts/run_gradcam.py --run_folder NewModel --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt --dataset ODELIA --max_images_per_class 20
+python scripts/run_xai.py --xai_method gradcam --run_folder NewModel --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt --dataset ODELIA --max_images_per_class 20
 ```
 
 ## Run Attention to get Importance

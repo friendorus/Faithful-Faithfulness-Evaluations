@@ -164,17 +164,24 @@ def select_slice(saliency, method):
 # ============================================================
 
 def overlay_heatmap(image, saliency, alpha=0.5):
+    """
+    image: 2D numpy array (H, W), normalized [0,1]
+    saliency: 2D numpy array (H, W), normalized [0,1]
+    """
     image_uint8 = np.uint8(255 * image)
     heatmap_uint8 = np.uint8(255 * saliency)
 
     heatmap_color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
     heatmap_color = cv2.cvtColor(heatmap_color, cv2.COLOR_BGR2RGB)
 
-    return cv2.addWeighted(
-        heatmap_color, alpha,
+    overlay = cv2.addWeighted(
+        heatmap_color,
+        alpha,
         np.stack([image_uint8]*3, axis=-1),
-        1 - alpha, 0
+        1 - alpha,
+        0
     )
+    return overlay
 
 def concat_input_overlay(input_2d, overlay_rgb):
     """
@@ -255,7 +262,7 @@ def run_pipeline(args):
         npy_dir.mkdir(parents=True, exist_ok=True)
         image_dir.mkdir(parents=True, exist_ok=True)
 
-        pt_path = pt_dir / f"{uid}.pt"
+        pt_path = pt_dir / f"{uid}_importance.pt"
 
         # -------- SALIENCY --------
         if not args.only_images:
@@ -263,7 +270,7 @@ def run_pipeline(args):
             sal_np = saliency.detach().cpu().numpy()
 
             torch.save(saliency.detach().cpu(), pt_path)
-            np.save(npy_dir / f"{uid}.npy", sal_np)
+            np.save(npy_dir / f"{uid}_importance.npy", sal_np)
 
             row = {
                 "UID": uid,
