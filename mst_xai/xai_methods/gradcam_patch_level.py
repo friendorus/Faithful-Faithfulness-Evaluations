@@ -28,6 +28,7 @@ class GradCAM_MST(BaseSaliencyMethod):
         self.slice_activations = None
         self.slice_gradients = None
 
+
         self._register_hooks()
 
     # --------------------------------------------------
@@ -37,6 +38,7 @@ class GradCAM_MST(BaseSaliencyMethod):
 
         # ---------- Patch-level hook ----------
         # patch_block = self.model.encoder.norm
+        # patch_block = self.model.encoder.blocks[-1].norm2       
         patch_block = self.model.encoder.blocks[-1].norm1
 
         def forward_patch(module, input, output):
@@ -49,6 +51,8 @@ class GradCAM_MST(BaseSaliencyMethod):
         patch_block.register_full_backward_hook(backward_patch)
 
         # ---------- Slice-level hook ----------
+        # slice_block = self.model.slice_fusion.norm
+        # slice_block = self.model.slice_fusion.layers[-1].norm2
         slice_block = self.model.slice_fusion.layers[-1].norm1
 
         def forward_slice(module, input, output):
@@ -60,10 +64,12 @@ class GradCAM_MST(BaseSaliencyMethod):
         slice_block.register_forward_hook(forward_slice)
         slice_block.register_full_backward_hook(backward_slice)
 
+
     # --------------------------------------------------
     # Core Grad-CAM
     # --------------------------------------------------
     def generate(self, batch, target_class: int):
+        #self.model
 
         self.model.zero_grad()
         source = batch["source"].to(self.model.device)
@@ -75,6 +81,7 @@ class GradCAM_MST(BaseSaliencyMethod):
         logits = self.model(source, save_attn=False)
         score = logits[:, target_class].sum()
         score.backward()
+
 
         # ===============================
         # PATCH-LEVEL CAM
