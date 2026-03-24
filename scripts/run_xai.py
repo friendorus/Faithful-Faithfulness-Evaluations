@@ -13,7 +13,7 @@ from torchvision.utils import save_image
 
 from mst.models.dino import DinoV2ClassifierSlice
 from mst_xai.xai_methods.attention import Attention_MST
-from mst_xai.xai_methods.gradcam_patch_level import GradCAM_MST
+from mst_xai.xai_methods.gradcam import GradCAM_MST
 from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
 from mst.inference.predictor import load_model
 
