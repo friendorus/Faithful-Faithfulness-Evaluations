@@ -5,6 +5,8 @@ from .utils.transformer_blocks import TransformerEncoderLayer
 import torch.nn as nn
 from einops import rearrange
 from .extern.dinov2.vision_transformer import vit_small, vit_base, vit_large, vit_giant2
+from mst.utils.ignore_warning import suppress_mst_warnings # Ignore warnings - Can be removed when the warnings are fixed in the codebase
+suppress_mst_warnings()
 
 
 def slices2rgb(tensor):
