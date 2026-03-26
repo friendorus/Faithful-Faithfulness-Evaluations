@@ -168,6 +168,11 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # ------------------------------
             elif self.attention_method in ["last_layer", "slice_weighted_rollout"]:
                 # cls_attn is [B*D, HW], reshape to [B, D, H_p, W_p
+                num_patches = H_p * W_p
+                total_tokens = cls_attn.shape[-1]
+                num_special = total_tokens - 1 - num_patches
+
+                cls_attn = cls_attn[:, 1 + num_special:]  # remove CLS + extra tokens
                 cls_attn = cls_attn.view(B, D, H_p, W_p)
                 # Upsample each slice independently
                 cls_attn = cls_attn.view(B * D, 1, H_p, W_p)

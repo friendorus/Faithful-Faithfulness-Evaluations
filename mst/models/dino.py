@@ -148,7 +148,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
 
         self.linear = nn.Linear(emb_ch, out_ch) if enable_linear else nn.Identity()
         
-    def forward(self, source, save_attn=False, src_key_padding_mask=None, **kwargs):   
+    def forward(self, source, save_attn=False, src_key_padding_mask=None, patch_mask=None, **kwargs):   
 
         if save_attn:
             fastpath_enabled = torch.backends.mha.get_fastpath_enabled()
@@ -157,6 +157,9 @@ class DinoV2ClassifierSlice(BasicClassifier):
             self.attention_maps = []
             self.hooks = []
             self.register_hooks()
+
+        # Store patch_mask for use in attention mask hooks if provided
+        self.patch_mask = patch_mask            
 
         x = source.to(self.device) # [B, C, D, H, W]
         B, C, *_ = x.shape
@@ -273,13 +276,72 @@ class DinoV2ClassifierSlice(BasicClassifier):
 
         def enable_attention2(mod):
                 forward_orig = mod.forward
-                def forward_wrap(self2, x):
+                def forward_wrap(self2, x, *args, **kwargs): # Modify forward function
+                    """
+                    Suports:
+                    - DinoV2 with CLS token only (num_extra_tokens=0)
+                    - DinoV2 with CLS + register tokens (num_extra_tokens=num_register_tokens)
+                    - DinoV3 with RoPE (Rotatory positional encoding) which has CLS + storage tokens (num_extra_tokens=num_storage_tokens)"""
+
+                    rope = kwargs.get("rope", None) # Dinov3 only
+
                     # forward_orig.__self__
                     B, N, C = x.shape
+
+                    # QKV projection
                     qkv = self2.qkv(x).reshape(B, N, 3, self2.num_heads, C // self2.num_heads).permute(2, 0, 3, 1, 4)
+                    #q, k, v = qkv[0] * self2.scale, qkv[1], qkv[2] # [B, Heads, N, C//Heads]
+                    q, k, v = qkv[0], qkv[1], qkv[2]
+
+                    # Apply RoPE if available (DinoV3)
+                    if rope is not None:
+                        q,k = self2.apply_rope(q,k, rope)
+                    # scale q After RoPE to maintain the same scale as k and v
+                    q = q * self2.scale
                     
-                    q, k, v = qkv[0] * self2.scale, qkv[1], qkv[2]
+                    
                     attn = q @ k.transpose(-2, -1)
+                    
+                    # =====================================
+                    # Patch Masking
+                    # - Set attention to masked patches to -inf before softmax
+                    # - This is important to ensure that masked patches do not contribute to the output
+                    # -------------------------------------
+                    if self.patch_mask is not None:
+                        D_mask, H_p, W_p = self.patch_mask.shape
+                        num_patches = H_p * W_p
+                        
+                        batch_masks = []
+
+                        for b in range(B):
+                            # select coresponding mask for the sample in the batch
+                            mask = self.patch_mask[b % D_mask]  # [H_p, W_p]
+                            mask = mask.to(x.device).flatten().bool()  # [num_patches]
+
+                            # dynamically adjust the mask for extra tokens
+                            total_tokens = N
+                            num_special = total_tokens - 1 - num_patches # CLS + extra tokens
+                            assert 1 + num_special + num_patches == N, "Token mismatch in attention masking"
+
+                            # buikd full token mask
+                            # [CLS | Extra tokens | Patch tokens]
+                            full_mask = torch.cat([
+                                torch.ones(1,device=x.device, dtype=torch.bool), # CLS token (always attend to CLS)
+                                torch.ones(num_special, device=x.device, dtype=torch.bool), # Extra tokens (always attend to extra tokens)
+                                mask # Patch tokens
+                            ])
+
+                            batch_masks.append(full_mask)
+
+                        mask_tensor = torch.stack(batch_masks) # [B, N]
+                        mask = mask_tensor.unsqueeze(1).unsqueeze(2) # [B, 1, 1, N]
+
+                        # apply mask: set attention to masked patches to -inf
+                        # using -1e9 instead of -inf to avoid NaNs in softmax
+                        attn = attn.masked_fill(~mask, -1e9) # [B, Heads, N, N]
+
+                    # =====================================    
+
            
                     attn = attn.softmax(dim=-1)
                     attn = self2.attn_drop(attn)
@@ -293,7 +355,8 @@ class DinoV2ClassifierSlice(BasicClassifier):
 
                     return x
                 
-                mod.forward = lambda x: forward_wrap(mod, x)
+                #mod.forward = lambda x: forward_wrap(mod, x)
+                mod.forward = lambda *args, **kwargs: forward_wrap(mod, *args, **kwargs)
                 mod.foward_orig = forward_orig
 
         def append_attention_maps(module, input, output):

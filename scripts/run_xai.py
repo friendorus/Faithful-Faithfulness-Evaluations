@@ -70,7 +70,10 @@ def setup_paths(args):
     results_folder = "results_tta" if args.use_tta else "results"
     path_out = Path(args.output_dir) / results_folder / run_folder / "saliency_results"
 
-    xai_root = path_out / args.xai_method
+    if args.xai_method == "attention":
+        xai_root = path_out / args.attention_method
+    else:
+        xai_root = path_out / args.xai_method
     xai_root.mkdir(parents=True, exist_ok=True)
 
     return path_run, xai_root

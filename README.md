@@ -113,7 +113,7 @@ python scripts/main_predict_eval.py \
 ```bash
 python scripts/run_xai.py \
   --xai_method gradcam \
-  --run_folder NewModel \
+  --run_folder DinoV3ViTB \
   --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
   --dataset ODELIA \
   --max_images_per_class 20
@@ -123,7 +123,7 @@ python scripts/run_xai.py \
 python scripts/run_xai.py \
   --xai_method attention \
   --attention_method last_layer\
-  --run_folder NewModel \
+  --run_folder DinoV3ViTB \
   --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
   --dataset ODELIA \
   --max_images_per_class 20
