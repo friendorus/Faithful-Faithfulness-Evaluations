@@ -344,7 +344,8 @@ class DinoV2ClassifierSlice(BasicClassifier):
 
            
                     attn = attn.softmax(dim=-1)
-                    attn = self2.attn_drop(attn)
+                    if hasattr(self2, "attn_drop") and callable(self2.attn_drop):
+                        attn = self2.attn_drop(attn)
 
                     x = (attn @ v).transpose(1, 2).reshape(B, N, C)
                     x = self2.proj(x)
