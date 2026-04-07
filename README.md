@@ -74,13 +74,13 @@ Run Script: [scripts/main_predict_eval.py](scripts/main_predict_eval.py)
 ```bash
 python scripts/main_predict_eval.py \
     --dataset ODELIA \
-    --run_folder ODELIA/DinoV2ClassifierSlice_Final
+    --run_folder DINOv2ViTS/DinoV2ClassifierSlice_Final
 ```
 
 ```bash
 python scripts/main_predict_eval.py \
     --dataset ODELIA \
-    --run_folder NewModel
+    --run_folder DINOv3ViTB \
     --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt
 ```
 
@@ -125,6 +125,26 @@ python scripts/run_xai.py \
   --attention_method last_layer\
   --run_folder DinoV3ViTB \
   --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA \
+  --max_images_per_class 20
+```
+
+```bash
+python scripts/run_xai.py \
+  --xai_method attention \
+  --attention_method Slice_weighted_rollout\
+  --run_folder DinoV3ViTB \
+  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA \
+  --max_images_per_class 20
+```
+
+```bash
+python scripts/run_xai.py \
+  --xai_method attention \
+  --attention_method Slice_weighted_rollout\
+  --run_folder DinoV2ViTS \
+  --checkpoint_name DinoV2ClassifierSlice_Final \
   --dataset ODELIA \
   --max_images_per_class 20
 ```

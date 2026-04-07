@@ -2,6 +2,10 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
+from pytorch_grad_cam import GradCAM
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+from pytorch_grad_cam.activations_and_gradients import ActivationsAndGradients
+
 from mst_xai.xai_methods.base import BaseSaliencyMethod
 
 
@@ -35,8 +39,6 @@ class GradCAM_MST(BaseSaliencyMethod):
         
         # Forward hook to capture activations (features) during forward pass
         def forward_hook(module, input, output):
-            # output shape: (B*D, N, C) 
-            # where B is the batch size, D is the number of slices, N is the number of tokens (including CLS and extra tokens), C is channel dimension
             self.activations = output  # (B*D, N, C)
 
         # Backward hook to capture gradients during backward pass
@@ -47,6 +49,45 @@ class GradCAM_MST(BaseSaliencyMethod):
         #register hooks into the model
         target_layer.register_forward_hook(forward_hook)
         target_layer.register_full_backward_hook(backward_hook)
+
+    # --------------------------------------------------
+    # Detect number of extra tokens (CLS + register/storage)
+    # --------------------------------------------------
+    def _get_num_extra_tokens(self, source):
+        """
+        This method detects how many extra tokens (beyond the CLS token) are present in the ViT encoder's output.        
+        # Remove CLS + extra tokens (we only want patch tokens for spatial saliency)
+        # ViT tokes = [CLS] + [extra tokens] + [patch tokens]
+        # For DinoV2, there are possible to have only 1 CLS toke or extra register tokens,
+        # For DinoV3, there are possible to have 1 CLS token + 4 storage tokens
+        """
+        if hasattr(self, "num_extra_tokens"):
+            return self.num_extra_tokens
+
+        # No gradient needed -> just inspect model structure to determine how many extra tokens there are (e.g., CLS + storage tokens)
+        with torch.no_grad():
+            # Take one slice for probing
+            x_enc = source[:1]              # (1,1,D,H,W)
+            x_enc = x_enc[:, :, 0]          # take one slice → (1,1,H,W)
+            # Convert to 3-channel by repeating the single channel (ViT requires 3-channel input) → (1,3,H,W)
+            x_enc = x_enc.repeat(1, 3, 1, 1)  # → (1,3,H,W)
+
+            # Get token structure
+            out = self.model.encoder.forward_features(x_enc)
+
+        # Detect exttra tokens based on the output of the encoder's forward_features method.
+        # If new models have different token structures, this logic may need to be updated.
+        if "x_storage_tokens" in out:
+            # DinoV3 (CLS + storage tokens)
+            self.num_extra_tokens = out["x_storage_tokens"].shape[1] 
+        elif "x_norm_regtokens" in out:
+            # DinoV2 (CLS + normalized register tokens)
+            self.num_extra_tokens = out["x_norm_regtokens"].shape[1]
+        else:
+            # Default to 0 if no extra tokens are detected (only CLS token)
+            self.num_extra_tokens = 0
+
+        return self.num_extra_tokens
 
     # --------------------------------------------------
     # Core Grad-CAM
@@ -67,54 +108,26 @@ class GradCAM_MST(BaseSaliencyMethod):
         # Forward pass
         # -------------------------
         logits = self.model(source)
-        # For Grad-CAM, we focus on the target class score.
-        # sum to ensure we get a scalar score for backward() even if batch size > 1
-        score = logits[:, target_class].sum()
+        class_specific_logits = logits[:, target_class]
 
 
         # -------------------------
         # Backward pass
         # -------------------------
         # This computes gradients for ALL layers
-        # but we will only capture the gradients at the target layer via our backward hook.
-        score.backward()
+        # Capture gradients at target layer via backward hook.
+        class_specific_logits.backward()
+
+
         # Retrieve the stored activations and gradients from the hooks
         acts = self.activations      # (B*D, N, C)
         grads = self.gradients       # (B*D, N, C)
 
-        # --------------------------------------------------
-        # Remove CLS + extra tokens (we only want patch tokens for spatial saliency)
-        # ViT tokes = [CLS] + [extra tokens] + [patch tokens]
-        # For DinoV2, there are possible to have only 1 CLS toke or extra register tokens,
-        # For DinoV3, there are possible to have 1 CLS token + 4 storage tokens
-        # --------------------------------------------------
-        if not hasattr(self, "num_extra_tokens"):
-            # No gradient needed -> just inspect model structure to determine how many extra tokens there are (e.g., CLS + storage tokens)
-            with torch.no_grad():
-                # Take one slice for probing
-                x_enc = source[:1]              # (1,1,D,H,W)
-                x_enc = x_enc[:, :, 0]          # take one slice → (1,1,H,W)
-                # Convert to 3-channel by repeating the single channel (ViT requires 3-channel input) → (1,3,H,W)
-                x_enc = x_enc.repeat(1, 3, 1, 1)  # → (1,3,H,W)
-
-                # Get token structure
-                out = self.model.encoder.forward_features(x_enc)
-
-            # Detect exttra tokens based on the output of the encoder's forward_features method.
-            # If new models have different token structures, this logic may need to be updated.
-            if "x_storage_tokens" in out:
-                # DinoV3 (CLS + storage tokens)
-                self.num_extra_tokens = out["x_storage_tokens"].shape[1] 
-            elif "x_norm_regtokens" in out:
-                # DinoV2 (CLS + normalized register tokens)
-                self.num_extra_tokens = out["x_norm_regtokens"].shape[1]
-            else:
-                # Default to 0 if no extra tokens are detected (only CLS token)
-                self.num_extra_tokens = 0
+        num_extra_tokens = self._get_num_extra_tokens(source)  # Detect number of extra tokens (CLS + register/storage)
 
         # Remove CLS and extra tokens from activations and gradients to focus on patch tokens
-        acts = acts[:, 1 + self.num_extra_tokens:, :]
-        grads = grads[:, 1 + self.num_extra_tokens:, :]
+        acts = acts[:, 1 + num_extra_tokens:, :]
+        grads = grads[:, 1 + num_extra_tokens:, :]
 
         # --------------------------------------------------
         # Grad-CAM computation
@@ -178,6 +191,149 @@ class GradCAM_MST(BaseSaliencyMethod):
         sal_slice = (sal_slice - sal_slice.min()) / (sal_slice.max() + 1e-8)
 
         # Overlay the saliency map on the original image slice using a simple alpha blending
+        overlay = (1 - alpha) * img_slice + alpha * sal_slice
+        overlay = np.clip(overlay, 0, 1)
+
+        return overlay
+
+
+
+class GradCAM_Library_MST(BaseSaliencyMethod):
+    """
+    Grad-CAM using pytorch-grad-cam library for MST (ViT-based)
+
+    Key adaptations:
+    - Flatten 3D volume into 2D slices
+    - Reshape ViT tokens → spatial grid
+    - Use encoder.blocks[-1].norm1 as target layer
+    """
+
+    def __init__(self, model):
+        super().__init__(model)
+        self.model.eval()
+
+        # Target layer for Grad-CAM (ViT best practice)
+        self.target_layers = [self.model.encoder.blocks[-1].norm1]
+
+        # Cache for token handling
+        self.num_extra_tokens = None
+
+    # --------------------------------------------------
+    # Detect number of extra tokens (CLS + register/storage)
+    # --------------------------------------------------
+    def _get_num_extra_tokens(self, source):
+        if self.num_extra_tokens is not None:
+            return self.num_extra_tokens
+
+        with torch.no_grad():
+            x = source[:1, :, 0]         # (1,1,H,W)
+            x = x.repeat(1, 3, 1, 1)     # (1,3,H,W)
+
+            out = self.model.encoder.forward_features(x)
+
+        if "x_storage_tokens" in out:
+            self.num_extra_tokens = out["x_storage_tokens"].shape[1]
+        elif "x_norm_regtokens" in out:
+            self.num_extra_tokens = out["x_norm_regtokens"].shape[1]
+        else:
+            self.num_extra_tokens = 0
+
+        return self.num_extra_tokens
+
+    # --------------------------------------------------
+    # ViT reshape: tokens → feature map
+    # --------------------------------------------------
+    def _reshape_transform(self, tensor, height, width, num_extra_tokens):
+        # tensor: (B*D, N, C)
+
+        # Remove CLS + extra tokens
+        tensor = tensor[:, 1 + num_extra_tokens:, :]
+
+        B_D, N, C = tensor.shape
+
+        # Convert to spatial grid
+        tensor = tensor.reshape(B_D, height, width, C)
+
+        # Convert to (B*D, C, H, W) for Grad-CAM
+        tensor = tensor.permute(0, 3, 1, 2)
+
+        return tensor
+
+    # --------------------------------------------------
+    # Core Grad-CAM
+    # --------------------------------------------------
+    def generate(self, batch, target_class: int):
+
+        source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
+
+        B, C, D, H, W = source.shape
+        patch_size = self.model.encoder.patch_embed.patch_size[0]
+
+        # --------------------------------------------------
+        input_tensor = source  # (B, C, D, H, W)
+
+        # --------------------------------------------------
+        # Token handling
+        # --------------------------------------------------
+        num_extra_tokens = self._get_num_extra_tokens(source)
+
+        h_p = H // patch_size
+        w_p = W // patch_size
+
+        # --------------------------------------------------
+        # Create Grad-CAM object
+        # --------------------------------------------------
+        cam = GradCAM(
+            model=self.model,
+            target_layers=self.target_layers,
+            reshape_transform=lambda x: self._reshape_transform(
+                x, h_p, w_p, num_extra_tokens
+            )
+        )
+
+        # --------------------------------------------------
+        # Define targets (same class for all slices)
+        # --------------------------------------------------
+        targets = [ClassifierOutputTarget(target_class)] * (B * D)
+
+        # --------------------------------------------------
+        # Run Grad-CAM
+        # --------------------------------------------------
+        grayscale_cam = cam(
+            input_tensor=input_tensor,
+            targets=targets
+        )  # (B*D, H, W)
+
+        # --------------------------------------------------
+        # Reshape back to volume
+        # --------------------------------------------------
+        cam_volume = grayscale_cam.reshape(B, D, H, W)
+
+        # --------------------------------------------------
+        # Normalize
+        # --------------------------------------------------
+        cam_volume = cam_volume - cam_volume.min()
+        cam_volume = cam_volume / (cam_volume.max() + 1e-8)
+
+        return torch.tensor(cam_volume.squeeze(0))
+
+    # --------------------------------------------------
+    # Visualization helper (same as before)
+    # --------------------------------------------------
+    def visualize(self, image, saliency, alpha=0.5, slice_idx=None):
+
+        img = image.squeeze().detach().cpu().numpy()
+        sal = saliency.detach().cpu().numpy()
+
+        if slice_idx is None:
+            slice_scores = sal.reshape(sal.shape[0], -1).sum(axis=1)
+            slice_idx = slice_scores.argmax()
+
+        img_slice = img[slice_idx]
+        sal_slice = sal[slice_idx]
+
+        sal_slice = (sal_slice - sal_slice.min()) / (sal_slice.max() + 1e-8)
+
         overlay = (1 - alpha) * img_slice + alpha * sal_slice
         overlay = np.clip(overlay, 0, 1)
 

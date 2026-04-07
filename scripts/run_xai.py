@@ -13,7 +13,7 @@ from torchvision.utils import save_image
 
 from mst.models.dino import DinoV2ClassifierSlice
 from mst_xai.xai_methods.attention import Attention_MST
-from mst_xai.xai_methods.gradcam import GradCAM_MST
+from mst_xai.xai_methods.gradcam import GradCAM_MST, GradCAM_Library_MST
 from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
 from mst.inference.predictor import load_model
 
@@ -37,6 +37,7 @@ def parse_args():
     parser.add_argument("--use_tta", action="store_true")
 
     parser.add_argument("--mode", default="spatial", choices=['spatial', 'slice'])
+    parser.add_argument("--gradcam_method", default = None, choices=[None, 'gradcam_library'])
     parser.add_argument("--attention_method", default="last_layer", choices=['last_layer','slice_weighted_rollout'])
 
     parser.add_argument("--max_importance", type=int, default=-1,
@@ -72,8 +73,11 @@ def setup_paths(args):
 
     if args.xai_method == "attention":
         xai_root = path_out / args.attention_method
-    else:
-        xai_root = path_out / args.xai_method
+    elif args.xai_method == "gradcam":
+        if args.gradcam_method == "gradcam_library":
+            xai_root = path_out / "gradcam_library"
+        else:
+            xai_root = path_out / args.xai_method
     xai_root.mkdir(parents=True, exist_ok=True)
 
     return path_run, xai_root
@@ -100,7 +104,11 @@ def load_model_unified(args, path_run, device):
 
 def build_xai(args, model):
     if args.xai_method == "gradcam":
-        return GradCAM_MST(model), "gradcam"
+        if args.gradcam_method == "gradcam_library":
+            return GradCAM_Library_MST(model), "gradcam_library"
+        elif args.gradcam_method is None:
+            return GradCAM_MST(model), "gradcam"
+
 
     if args.xai_method == "attention":
         name = f"{args.attention_method}_{args.mode}"
