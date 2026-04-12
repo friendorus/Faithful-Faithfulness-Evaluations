@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument("--use_tta", action="store_true")
 
     parser.add_argument("--mode", default="spatial", choices=['spatial', 'slice'])
-    parser.add_argument("--gradcam_method", default = None, choices=[None, 'gradcam_library'])
+    parser.add_argument("--gradcam_method", default = 'hybrid', choices=['manual', 'library_encoder', 'hybrid'])
     parser.add_argument("--attention_method", default="last_layer", choices=['last_layer','slice_weighted_rollout'])
 
     parser.add_argument("--max_importance", type=int, default=-1,
@@ -49,9 +49,6 @@ def parse_args():
     parser.add_argument("--slice_choosen", default="squared_sum", 
                         choices=['mid', 'highest_mean', 'highest_max', 'top-K_mean', 'squared_sum'],
                         help="Method to select the slice for visualization when mode is spatial"
-                        )
-    parser.add_argument("--only_images", action="store_true",
-                        help="If set, only saves images, not importance scores"
                         )
 
     return parser.parse_args()
@@ -72,15 +69,14 @@ def setup_paths(args):
     path_out = Path(args.output_dir) / results_folder / run_folder / "saliency_results"
 
     if args.xai_method == "attention":
-        xai_root = path_out / args.attention_method
+        xai_name = args.attention_method
+        xai_root = path_out / xai_name
     elif args.xai_method == "gradcam":
-        if args.gradcam_method == "gradcam_library":
-            xai_root = path_out / "gradcam_library"
-        else:
-            xai_root = path_out / args.xai_method
+        xai_name = 'gradcam'
+        xai_root = path_out / xai_name / args.gradcam_method
     xai_root.mkdir(parents=True, exist_ok=True)
 
-    return path_run, xai_root
+    return path_run, xai_root, xai_name
 
 
 def load_dataset(name):
@@ -90,25 +86,20 @@ def load_dataset(name):
 
 
 def load_model_unified(args, path_run, device):
-    # if args.xai_method == "attention":
-    #     model = DinoV2ClassifierSlice.load_best_checkpoint(path_run)
-    # else:
     model = load_model(
         model_name=args.model_name,
         checkpoint_path=path_run,
         device=device,
     )
-
     return model.to(device).eval()
 
 
 def build_xai(args, model):
     if args.xai_method == "gradcam":
-        if args.gradcam_method == "gradcam_library":
-            return GradCAM_Library_MST(model), "gradcam_library"
-        elif args.gradcam_method is None:
-            return GradCAM_MST(model), "gradcam"
-
+        name = f"gradcam_{args.gradcam_method}" if args.gradcam_method else "gradcam"
+        return GradCAM_MST(model, 
+                           mode=args.gradcam_method
+                           ), name
 
     if args.xai_method == "attention":
         name = f"{args.attention_method}_{args.mode}"
@@ -127,7 +118,7 @@ def generate_saliency(args, xai, model, batch):
     if args.xai_method == "gradcam":
         with torch.no_grad():
             pred = model(batch["source"]).argmax(dim=1).item()
-        return xai.generate(batch, target_class=pred)
+        return xai.generate(batch, target_class=pred), pred
 
     return xai.generate(batch, target_class=None)
 
@@ -214,10 +205,11 @@ def concat_input_overlay(input_2d, overlay_rgb):
 
 
 def save_images(batch, saliency, uid, method_name, args, image_dir):
+    img = batch["source"].squeeze(0).squeeze(0).cpu().numpy()
+    img = (img - img.min()) / (img.max() - img.min() + 1e-8)  # Normalize to [0,1]
     idx = select_slice(saliency, args.slice_choosen)
 
-    img = batch["source"][0, 0, idx].cpu().numpy()
-    img = (img - img.min()) / (img.max() + 1e-8)
+    img = img[idx].cpu().numpy()
     sal = saliency[idx].detach().cpu().numpy()
 
     overlay = overlay_heatmap(img, sal)
@@ -241,7 +233,7 @@ def run_pipeline(args):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    path_run, xai_root = setup_paths(args)
+    path_run, xai_root, xai_name = setup_paths(args)
 
     model = load_model_unified(args, path_run, device)
     xai, method_name = build_xai(args, model)
@@ -265,6 +257,9 @@ def run_pipeline(args):
             "target": torch.tensor([gt], device=device)
         }
 
+        saliency, pred = generate_saliency(args, xai, model, batch)
+        sal_np = saliency.detach().cpu().numpy()
+
         class_dir = xai_root / f"class_{gt}"
         pt_dir = class_dir / "pt"
         npy_dir = class_dir / "npy"
@@ -274,35 +269,30 @@ def run_pipeline(args):
         npy_dir.mkdir(parents=True, exist_ok=True)
         image_dir.mkdir(parents=True, exist_ok=True)
 
-        pt_path = pt_dir / f"{uid}_importance.pt"
+        pt_path = pt_dir / f"{uid}_{xai_name}_GT_Class_{gt}_Pred_Class_{pred}.pt"
+        npy_path = npy_dir / f"{uid}_{xai_name}_GT_Class_{gt}_Pred_Class_{pred}.npy"
 
-        # -------- SALIENCY --------
-        if not args.only_images:
-            saliency = generate_saliency(args, xai, model, batch)
-            sal_np = saliency.detach().cpu().numpy()
 
-            torch.save(saliency.detach().cpu(), pt_path)
-            np.save(npy_dir / f"{uid}_importance.npy", sal_np)
 
-            row = {
-                'UID': uid,
-                'dataset': args.dataset,
-                'model': args.model_name,
-                'xai_method': args.xai_method,
-                'class': gt,
-                'mean_importance': float(sal_np.mean()),
-                'max_importance': float(sal_np.max()),
-                'std_importance': float(sal_np.std()),
-                'top_1pct_mean': float(sal_np[sal_np >= np.quantile(sal_np, 0.99)].mean()),
-                'importance_path': str(pt_path)
-            }
+        torch.save(saliency.detach().cpu(), pt_path)
+        np.save(npy_path, sal_np)
 
-            rows.append(row)
+        row = {
+            'UID': uid,
+            'dataset': args.dataset,
+            'model': args.model_name,
+            'xai_method': xai_name,
+            'gt_class': gt,
+            'pred_class': pred,
+            'mean_importance': float(sal_np.mean()),
+            'max_importance': float(sal_np.max()),
+            'std_importance': float(sal_np.std()),
+            'top_1pct_mean': float(sal_np[sal_np >= np.quantile(sal_np, 0.99)].mean()),
+            'importance_path': str(pt_path)
+        }
 
-        else:
-            if not pt_path.exists():
-                continue
-            saliency = torch.load(pt_path, map_location=device, weights_only=True)
+        rows.append(row)
+
 
         # -------- IMAGE --------
         if image_counter[gt] < args.max_images_per_class:
