@@ -250,11 +250,7 @@ class GradCAM_MST(BaseSaliencyMethod):
 
         B, C, D, H, W = source.shape
         patch_size = self.model.encoder.patch_embed.patch_size[0]
-        print(f"Type of self.model.encoder.patch_embed.patch_size: {type(self.model.encoder.patch_embed.patch_size)}")
-        print(len(self.model.encoder.patch_embed.patch_size))
-        print(self.model.encoder.patch_embed.patch_size[0])
-
-    
+   
 
         output = self.activations_and_grads(source)  
         class_specific_logits = output[:, target_class] #.sum() 
@@ -417,26 +413,26 @@ class GradCAM_MST(BaseSaliencyMethod):
         elif self.mode == "gradcam_library":
             return self.generate_gradcam_library(source, target_class)
     
-    # --------------------------------------------------
-    # Visualization (optional helper)
-    # --------------------------------------------------
-    def visualize(self, image, saliency, alpha=0.5, slice_idx=None):
-        # Convert tensors to numpy for visualization
-        img = image.squeeze().detach().cpu().numpy()
-        sal = saliency.detach().cpu().numpy()
-        # Automatically pick the slice with the highest saliency if slice_idx is not provided
-        if slice_idx is None:
-            slice_scores = sal.reshape(sal.shape[0], -1).sum(axis=1)
-            slice_idx = slice_scores.argmax()
+    # # --------------------------------------------------
+    # # Visualization (optional helper)
+    # # --------------------------------------------------
+    # def visualize(self, image, saliency, alpha=0.5, slice_idx=None):
+    #     # Convert tensors to numpy for visualization
+    #     img = image.squeeze().detach().cpu().numpy()
+    #     sal = saliency.detach().cpu().numpy()
+    #     # Automatically pick the slice with the highest saliency if slice_idx is not provided
+    #     if slice_idx is None:
+    #         slice_scores = sal.reshape(sal.shape[0], -1).sum(axis=1)
+    #         slice_idx = slice_scores.argmax()
 
-        img_slice = img[slice_idx]
-        sal_slice = sal[slice_idx]
+    #     img_slice = img[slice_idx]
+    #     sal_slice = sal[slice_idx]
 
-        # Normalize the saliency slice to [0,1] for better visualization
-        sal_slice = (sal_slice - sal_slice.min()) / (sal_slice.max() + 1e-8)
+    #     # Normalize the saliency slice to [0,1] for better visualization
+    #     sal_slice = (sal_slice - sal_slice.min()) / (sal_slice.max() + 1e-8)
 
-        # Overlay the saliency map on the original image slice using a simple alpha blending
-        overlay = (1 - alpha) * img_slice + alpha * sal_slice
-        overlay = np.clip(overlay, 0, 1)
+    #     # Overlay the saliency map on the original image slice using a simple alpha blending
+    #     overlay = (1 - alpha) * img_slice + alpha * sal_slice
+    #     overlay = np.clip(overlay, 0, 1)
 
-        return overlay
+    #     return overlay
