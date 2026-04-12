@@ -6,6 +6,13 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.activations_and_gradients import ActivationsAndGradients
 
+# from medcam3d import GradCAM as GradCAM3D
+# from medcam3d.utils.model_targets import ClassifierOutputTarget as ClassifierOutputTarget3D
+# from medcam import medcam
+
+
+
+
 from mst_xai.xai_methods.base import BaseSaliencyMethod
 
 
@@ -20,23 +27,47 @@ class GradCAM_MST(BaseSaliencyMethod):
     - Returns volumetric saliency [D, H, W]
     """
 
-    def __init__(self, model):
+    def __init__(self, model, mode="manual"):
         super().__init__(model)
+        self.model.eval() # Set model to evaluation mode
+        
+        assert mode in ["manual", "library_encoder", "hybrid", "medcam3d", "medcam", "gradcam_library"], "Invalid mode. Choose from 'manual', 'library_encoder', 'medcam3d', 'medcam', or 'hybrid'."
+        self.mode = mode
+
+        ## We choose norm1 of the last block as the target layer for Grad-CAM, as it provides stronger gradients than norm2 or layer.norm in ViT-based MST.
+        # target_layer = self.model.encoder.norm
+        # target_layer = self.model.encoder.blocks[-1].norm2 
+        self.target_layer = self.model.encoder.blocks[-1].norm1 # Already try norm2 and layer.norm but they provide zero grads.
+        
+        ## Manual and Hybrid modes Storage
         # Will store forward activations (features) and backward gradients (importance scores)
         self.activations = None
         self.gradients = None
-        # Register hooks to capture activations and gradients from the target layer when class is created
-        self._register_hooks()
+        
+        if mode == "manual":
+            # Register hooks to capture activations and gradients from the target layer when class is created
+            self._register_hooks()
+
+        if mode == "hybrid":
+            self.activations_and_grads = ActivationsAndGradients(
+                model=self.model,
+                target_layers=[self.target_layer],
+                reshape_transform=None  # Handle reshaping transform for ViT tokens → spatial grid
+            )
+
+        # if mode == "medcam3d":
+        #     self.cam3d = GradCAM3D(
+        #         model=self.model,
+        #         target_layers=[self.target_layer],
+        #         reshape_transform=None
+        #     )
+        
 
     # --------------------------------------------------
-    # Hook: Last ViT block (norm1)
+    # Hook: Last ViT block (norm1) for manual mode
     # --------------------------------------------------
     def _register_hooks(self):
-        # We choose norm1 of the last block as the target layer for Grad-CAM, as it provides stronger gradients than norm2 or layer.norm in ViT-based MST.
-        # target_layer = self.model.encoder.norm
-        # target_layer = self.model.encoder.blocks[-1].norm2 
-        target_layer = self.model.encoder.blocks[-1].norm1 # Already try norm2 and layer.norm but they provide zero grads.
-        
+  
         # Forward hook to capture activations (features) during forward pass
         def forward_hook(module, input, output):
             self.activations = output  # (B*D, N, C)
@@ -47,8 +78,8 @@ class GradCAM_MST(BaseSaliencyMethod):
             self.gradients = grad_output[0]  # (B*D, N, C)
 
         #register hooks into the model
-        target_layer.register_forward_hook(forward_hook)
-        target_layer.register_full_backward_hook(backward_hook)
+        self.target_layer.register_forward_hook(forward_hook)
+        self.target_layer.register_full_backward_hook(backward_hook)
 
     # --------------------------------------------------
     # Detect number of extra tokens (CLS + register/storage)
@@ -88,15 +119,30 @@ class GradCAM_MST(BaseSaliencyMethod):
             self.num_extra_tokens = 0
 
         return self.num_extra_tokens
+    
+    def _remove_extra_tokens(self, acts, grads, source):
+        num_extra_tokens = self._get_num_extra_tokens(source)
+        # Remove CLS and extra tokens from activations and gradients to focus on patch tokens
+        acts = acts[:, 1 + num_extra_tokens:, :] # 1+num_extra_tokens to skip CLS and extra tokens
+        grads = grads[:, 1 + num_extra_tokens:, :]
+        return acts, grads
 
     # --------------------------------------------------
     # Core Grad-CAM
     # --------------------------------------------------
-    def generate(self, batch, target_class: int):
-        # Reset stored activations and gradients in model
-        self.model.zero_grad()
+    def _compute_cam(self, acts, grads):
+        weights = grads.mean(dim=1)  # (B*D, C) 
+        cam = (acts * weights.unsqueeze(1)).sum(dim=2)  # (B*D, N) # Weight combination of activations with importance weights to get coarse saliency map
+        cam = torch.relu(cam)  
+        return cam
+
+    # --------------------------------------------------
+    # Mode 1: Manual Grad-CAM for MST
+    # --------------------------------------------------
+    def generate(self, source, target_class: int):
+        self.model.zero_grad() # Reset stored activations and gradients in model
         
-        source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
+        # source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
         
         B, C, D, H, W = source.shape
 
@@ -123,25 +169,12 @@ class GradCAM_MST(BaseSaliencyMethod):
         acts = self.activations      # (B*D, N, C)
         grads = self.gradients       # (B*D, N, C)
 
-        num_extra_tokens = self._get_num_extra_tokens(source)  # Detect number of extra tokens (CLS + register/storage)
-
-        # Remove CLS and extra tokens from activations and gradients to focus on patch tokens
-        acts = acts[:, 1 + num_extra_tokens:, :]
-        grads = grads[:, 1 + num_extra_tokens:, :]
+        acts, grads = self._remove_extra_tokens(acts, grads, source)
 
         # --------------------------------------------------
         # Grad-CAM computation
         # --------------------------------------------------
-
-        # Step 1: Global average pooling of gradients across the token dimension to get importance weights for each channel.
-        # Equivalent to global average pooling in the original Grad-CAM paper, but applied to the token dimension instead of spatial dimensions.
-        weights = grads.mean(dim=1)  # (B*D, C)
-
-        # Step 2: Weight combination of activations with the importance weights to get the coarse saliency map.
-        cam = (acts * weights.unsqueeze(1)).sum(dim=2)  # (B*D, N)
-
-        # Step 3: Apply ReLU to focus on positive contributions (as per Grad-CAM paper).
-        cam = torch.relu(cam)
+        cam = self._compute_cam(acts, grads)  # (B*D, N)
 
         # --------------------------------------------------
         # Reshape tokens to spatial grid
@@ -171,7 +204,219 @@ class GradCAM_MST(BaseSaliencyMethod):
 
         # Return the saliency map for the batch (B, D, H, W). The caller can then select specific slices or aggregate as needed.
         return cam.squeeze(0)  # (D, H, W)
+    
+    # --------------------------------------------------
+    # Mode 2: Library (Encoder only) not whole MST model
+    # --------------------------------------------------
+    def generate_library_encoder(self, source, target_class: int):
+        # source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
 
+        B, C, D, H, W = source.shape
+        patch_size = self.model.encoder.patch_embed.patch_size[0]
+
+        input_2d = source.permute(0, 2, 1, 3, 4).reshape(B * D, C, H, W)  # (B*D, C, H, W) # Flatten 3D volume into 2D slices for Grad-CAM library
+        # Repeat channel to match 3-channel input expected by ViT
+        if input_2d.shape[1] == 1:
+            input_2d = input_2d.repeat(1, 3, 1, 1)
+
+        self.num_extra_tokens = self._get_num_extra_tokens(source) # Detect number of extra tokens for reshape transform
+        h_p = H // patch_size
+        w_p = W // patch_size
+
+        def reshape_transform(tensor):
+            tensor = tensor[:, 1+ self.num_extra_tokens:, :]  # Remove CLS and extra tokens
+            tensor = tensor.reshape(B * D, h_p, w_p, -1)  # Reshape to spatial grid # -1 infers the channel dimension
+            tensor = tensor.permute(0, 3, 1, 2) # Convert to (B*D, C, H, W) for Grad-CAM
+            return tensor
+        
+        cam = GradCAM(
+            model=self.model.encoder, # Only pass the encoder to the Grad-CAM library since we're targeting a layer within the encoder
+            target_layers=[self.target_layer],
+            reshape_transform=reshape_transform
+        )
+
+        targets = [ClassifierOutputTarget(target_class)] * (B * D) # Define targets for each slice
+        cam = cam(input_tensor=input_2d, targets=targets)  # (B*D, H, W)
+        cam = cam.reshape(B, D, H, W)  # Reshape back to volume
+        cam = cam - cam.min()
+        cam = cam / (cam.max() + 1e-8)
+        return torch.tensor(cam.squeeze(0))  # (D, H, W)
+    
+    # --------------------------------------------------
+    # Mode 3: Hybrid - Use library for activations and gradients, but manual computation for CAM
+    # --------------------------------------------------
+    def generate_hybrid(self, source, target_class: int):
+        # source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
+
+        B, C, D, H, W = source.shape
+        patch_size = self.model.encoder.patch_embed.patch_size[0]
+        print(f"Type of self.model.encoder.patch_embed.patch_size: {type(self.model.encoder.patch_embed.patch_size)}")
+        print(len(self.model.encoder.patch_embed.patch_size))
+        print(self.model.encoder.patch_embed.patch_size[0])
+
+    
+
+        output = self.activations_and_grads(source)  
+        class_specific_logits = output[:, target_class] #.sum() 
+
+        self.model.zero_grad()
+        class_specific_logits.backward()  # Compute gradients
+
+        acts = self.activations_and_grads.activations  # (B*D, N, C)
+        grads = self.activations_and_grads.gradients   # (B*D, N, C)
+        acts, grads = self._remove_extra_tokens(acts, grads, source) # Remove CLS and extra tokens
+
+        cam = self._compute_cam(acts, grads)  # Compute CAM using manual method
+        h_p = H // patch_size
+        w_p = W // patch_size
+        cam = cam.view(B, D, h_p, w_p)  # Reshape to spatial grid
+        cam = F.interpolate(
+            cam.unsqueeze(1),      # (B,1,D,h_p,w_p)
+            size=(D, H, W),        # target size 
+            mode="trilinear",
+            align_corners=False
+        ).squeeze(1)  # Upsample to voxel space
+
+        cam = cam - cam.min()
+        cam = cam / (cam.max() + 1e-8)  # Normalize
+
+        return cam.squeeze(0)  # (D, H, W)
+    
+    # --------------------------------------------------
+    # Mode 4: Use MedCAM3D library which is designed for 3D
+    # --------------------------------------------------
+    # def generate_medcam3d(self, source, target_class: int):
+    #     # source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
+
+    #     B, C, D, H, W = source.shape
+
+        # targets = [ClassifierOutputTarget3D(target_class)] * B # Define targets for each sample in the batch
+        # cam = self.cam3d(input_tensor=source, targets=targets)  # (B, D, H, W)
+
+        # cam = cam - cam.min()
+        # cam = cam / (cam.max() + 1e-8)  # Normalize
+
+        # return torch.tensor(cam.squeeze(0))  # (D, H, W)
+    
+    # --------------------------------------------------
+    # Mode 5: Use MedCAM library
+    # --------------------------------------------------
+    # def generate_medcam(self, source, target_class: int):
+
+    #     model = self.model
+
+    #     # Inject Medcam
+    #     model = medcam.inject(
+    #         model, 
+    #         output_dir=None,
+    #         backend="gcam",
+    #         layer=self.target_layer,
+    #         return_attentions=True,
+    #         save_maps=False) 
+        
+    #     model.eval()
+    #     source = source.to(self.model.device)  # (B, C, D, H, W)
+
+    #     # Forward pass (MedCAM handles hooks internally)
+    #     output, cam = model(source)
+
+    #     # cam shape depends on medcam internals
+    #     # Usually: (B, 1, D, H, W) or similar
+    #     if isinstance(cam, tuple):
+    #         cam = cam[0]
+
+    #     cam = cam.squeeze()
+
+    #     # Normalize
+    #     cam = cam - cam.min()
+    #     cam = cam / (cam.max() + 1e-8)
+
+    #     return cam
+    
+    # --------------------------------------------------
+    # Mode 6: Use Full GradCAM library
+    # --------------------------------------------------
+
+        
+
+    def generate_gradcam_library(self, source, target_class: int):
+        # source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
+
+        B, C, D, H, W = source.shape # B = 1, C = 1, D = 16, H = 224, W = 224 for our test case
+        patch_size = self.model.encoder.patch_embed.patch_size[0] # 14 for DinoV2, 16 for DinoV3
+        H_p = H // patch_size # H_p = 16 for DinoV2, 14 for DinoV3
+        W_p = W // patch_size # W_p = 16 for DinoV2, 14 for DinoV3
+
+        self.num_extra_tokens = self._get_num_extra_tokens(source) # Detect number of extra tokens for reshape transform
+
+        def reshape_transform(tensor, height, width, num_extra_tokens=0):
+            """
+            Transform ViT tokens to spatial feature maps
+
+            Args:
+                tensor: (B*D, N, C)
+                height: H_p (number of patches along height)
+                width:  W_p (number of patches along width)
+                num_extra_tokens: number of extra tokens (excluding CLS)
+
+            Returns:
+                (B*D, C, H_p, W_p)
+            """
+
+            # Remove CLS + extra tokens
+            tensor = tensor[:, 1 + num_extra_tokens:, :]   # (B*D, N_patch, C)
+
+            # Reshape tokens → spatial grid
+            B_D, N, C = tensor.shape
+            tensor = tensor.reshape(B_D, height, width, C)  # (B*D, H_p, W_p, C)
+
+            # Convert to CNN format
+            tensor = tensor.permute(0, 3, 1, 2)  # (B*D, C, H_p, W_p)
+
+            return tensor
+        
+        
+
+        cam = GradCAM(
+            model=self.model, 
+            target_layers=[self.target_layer],
+            reshape_transform=lambda x:reshape_transform(
+                x,
+                height=H_p,
+                width=W_p,
+                num_extra_tokens=self.num_extra_tokens
+            )
+        )
+
+        targets = [ClassifierOutputTarget(target_class)] 
+        cam = cam(input_tensor=source, targets=targets)  # (B*D, H, W)
+
+
+        cam = cam.reshape(B, D, H, W)  # Reshape back to volume
+        cam = cam - cam.min()
+        cam = cam / (cam.max() + 1e-8)
+        return torch.tensor(cam.squeeze(0))  # (D, H, W)
+    
+    # ----------------------------------
+    # Main Entry
+    # ----------------------------------
+    def generate(self, batch, target_class: int):
+
+        source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
+
+        if self.mode == "manual":
+            return self.generate_manual(source, target_class)
+        elif self.mode == "library_encoder":
+            return self.generate_library_encoder(source, target_class)
+        elif self.mode == "hybrid":
+            return self.generate_hybrid(source, target_class)
+        elif self.mode == "medcam3d":
+            return self.generate_medcam3d(source, target_class)
+        elif self.mode == "medcam":
+            return self.generate_medcam(source, target_class)
+        elif self.mode == "gradcam_library":
+            return self.generate_gradcam_library(source, target_class)
+    
     # --------------------------------------------------
     # Visualization (optional helper)
     # --------------------------------------------------
@@ -191,149 +436,6 @@ class GradCAM_MST(BaseSaliencyMethod):
         sal_slice = (sal_slice - sal_slice.min()) / (sal_slice.max() + 1e-8)
 
         # Overlay the saliency map on the original image slice using a simple alpha blending
-        overlay = (1 - alpha) * img_slice + alpha * sal_slice
-        overlay = np.clip(overlay, 0, 1)
-
-        return overlay
-
-
-
-class GradCAM_Library_MST(BaseSaliencyMethod):
-    """
-    Grad-CAM using pytorch-grad-cam library for MST (ViT-based)
-
-    Key adaptations:
-    - Flatten 3D volume into 2D slices
-    - Reshape ViT tokens → spatial grid
-    - Use encoder.blocks[-1].norm1 as target layer
-    """
-
-    def __init__(self, model):
-        super().__init__(model)
-        self.model.eval()
-
-        # Target layer for Grad-CAM (ViT best practice)
-        self.target_layers = [self.model.encoder.blocks[-1].norm1]
-
-        # Cache for token handling
-        self.num_extra_tokens = None
-
-    # --------------------------------------------------
-    # Detect number of extra tokens (CLS + register/storage)
-    # --------------------------------------------------
-    def _get_num_extra_tokens(self, source):
-        if self.num_extra_tokens is not None:
-            return self.num_extra_tokens
-
-        with torch.no_grad():
-            x = source[:1, :, 0]         # (1,1,H,W)
-            x = x.repeat(1, 3, 1, 1)     # (1,3,H,W)
-
-            out = self.model.encoder.forward_features(x)
-
-        if "x_storage_tokens" in out:
-            self.num_extra_tokens = out["x_storage_tokens"].shape[1]
-        elif "x_norm_regtokens" in out:
-            self.num_extra_tokens = out["x_norm_regtokens"].shape[1]
-        else:
-            self.num_extra_tokens = 0
-
-        return self.num_extra_tokens
-
-    # --------------------------------------------------
-    # ViT reshape: tokens → feature map
-    # --------------------------------------------------
-    def _reshape_transform(self, tensor, height, width, num_extra_tokens):
-        # tensor: (B*D, N, C)
-
-        # Remove CLS + extra tokens
-        tensor = tensor[:, 1 + num_extra_tokens:, :]
-
-        B_D, N, C = tensor.shape
-
-        # Convert to spatial grid
-        tensor = tensor.reshape(B_D, height, width, C)
-
-        # Convert to (B*D, C, H, W) for Grad-CAM
-        tensor = tensor.permute(0, 3, 1, 2)
-
-        return tensor
-
-    # --------------------------------------------------
-    # Core Grad-CAM
-    # --------------------------------------------------
-    def generate(self, batch, target_class: int):
-
-        source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
-
-        B, C, D, H, W = source.shape
-        patch_size = self.model.encoder.patch_embed.patch_size[0]
-
-        # --------------------------------------------------
-        input_tensor = source  # (B, C, D, H, W)
-
-        # --------------------------------------------------
-        # Token handling
-        # --------------------------------------------------
-        num_extra_tokens = self._get_num_extra_tokens(source)
-
-        h_p = H // patch_size
-        w_p = W // patch_size
-
-        # --------------------------------------------------
-        # Create Grad-CAM object
-        # --------------------------------------------------
-        cam = GradCAM(
-            model=self.model,
-            target_layers=self.target_layers,
-            reshape_transform=lambda x: self._reshape_transform(
-                x, h_p, w_p, num_extra_tokens
-            )
-        )
-
-        # --------------------------------------------------
-        # Define targets (same class for all slices)
-        # --------------------------------------------------
-        targets = [ClassifierOutputTarget(target_class)] * (B * D)
-
-        # --------------------------------------------------
-        # Run Grad-CAM
-        # --------------------------------------------------
-        grayscale_cam = cam(
-            input_tensor=input_tensor,
-            targets=targets
-        )  # (B*D, H, W)
-
-        # --------------------------------------------------
-        # Reshape back to volume
-        # --------------------------------------------------
-        cam_volume = grayscale_cam.reshape(B, D, H, W)
-
-        # --------------------------------------------------
-        # Normalize
-        # --------------------------------------------------
-        cam_volume = cam_volume - cam_volume.min()
-        cam_volume = cam_volume / (cam_volume.max() + 1e-8)
-
-        return torch.tensor(cam_volume.squeeze(0))
-
-    # --------------------------------------------------
-    # Visualization helper (same as before)
-    # --------------------------------------------------
-    def visualize(self, image, saliency, alpha=0.5, slice_idx=None):
-
-        img = image.squeeze().detach().cpu().numpy()
-        sal = saliency.detach().cpu().numpy()
-
-        if slice_idx is None:
-            slice_scores = sal.reshape(sal.shape[0], -1).sum(axis=1)
-            slice_idx = slice_scores.argmax()
-
-        img_slice = img[slice_idx]
-        sal_slice = sal[slice_idx]
-
-        sal_slice = (sal_slice - sal_slice.min()) / (sal_slice.max() + 1e-8)
-
         overlay = (1 - alpha) * img_slice + alpha * sal_slice
         overlay = np.clip(overlay, 0, 1)
 

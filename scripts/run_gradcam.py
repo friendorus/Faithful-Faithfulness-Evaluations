@@ -15,7 +15,7 @@ from collections import defaultdict
 from torchvision.utils import save_image
 
 # from mst.models.dino import DinoV2ClassifierSlice
-from mst_xai.xai_methods.gradcam_patch_level import GradCAM_MST
+from mst_xai.xai_methods.gradcam import GradCAM_MST
 # from MST.Archeived.gradcam_slice_level import GradCAM_Slice
 from mst.data.datasets.dataset_3d_odelia import ODELIA_Dataset3D
 from mst.inference.predictor import load_model
@@ -124,7 +124,7 @@ model = load_model(
     device=device,
 )
 
-gradcam = GradCAM_MST(model)
+gradcam = GradCAM_MST(model, mode="hybrid") 
 
 # ------------ Load dataset ----------------
 ds_test = get_dataset(dataset, split='test')
