@@ -104,10 +104,10 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             cls_attn = attn_spatial * slice_weights  # Weight spatial attention by slice attention
             cls_attn = cls_attn.mean(dim=1)  
 
-        elif self.attention_method == "rollout":
-            #Attention rollout across all layers
-            attn_maps = self.model.attention_maps  # list of [B, Heads, Tokens, Tokens] on each slice - from dino.py 
-            cls_attn = self._attention_rollout(attn_maps)  # [B, HW] - rollout across all layers on each slice - from this file
+        # elif self.attention_method == "rollout":
+        #     #Attention rollout across all layers
+        #     attn_maps = self.model.attention_maps  # list of [B, Heads, Tokens, Tokens] on each slice - from dino.py 
+        #     cls_attn = self._attention_rollout(attn_maps)  # [B, HW] - rollout across all layers on each slice - from this file
         
         elif self.attention_method == "slice_weighted_rollout":
             # Slice-weighted attention rollout

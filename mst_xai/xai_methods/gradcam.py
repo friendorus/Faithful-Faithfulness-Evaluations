@@ -185,7 +185,7 @@ class GradCAM_MST(BaseSaliencyMethod):
         # Normalize to [0,1] 
         # --------------------------------------------------
         cam = cam - cam.min()
-        cam = cam / (cam.max() + 1e-8)
+        cam = cam / (cam.max() - cam.min() + 1e-8)
 
         # Return the saliency map for the batch (B, D, H, W). The caller can then select specific slices or aggregate as needed.
         return cam.squeeze(0)  # (D, H, W)
@@ -224,7 +224,7 @@ class GradCAM_MST(BaseSaliencyMethod):
         cam = cam(input_tensor=input_2d, targets=targets)  # (B*D, H, W)
         cam = cam.reshape(B, D, H, W)  # Reshape back to volume
         cam = cam - cam.min()
-        cam = cam / (cam.max() + 1e-8)
+        cam = cam / (cam.max() - cam.min() + 1e-8)
         return torch.tensor(cam.squeeze(0))  # (D, H, W)
     
     # --------------------------------------------------
@@ -237,14 +237,16 @@ class GradCAM_MST(BaseSaliencyMethod):
         patch_size = self.model.encoder.patch_embed.patch_size[0]
    
 
-        logits = self.model(source)  
+        # logits = self.model(source)
+        logits = self.activations_and_grads(source)
         class_specific_logits = logits[:, target_class] 
+    
 
         self.model.zero_grad()
         class_specific_logits.backward()  # Compute gradients
 
-        acts = self.activations_and_grads.activations  # (B*D, N, C)
-        grads = self.activations_and_grads.gradients   # (B*D, N, C)
+        acts = self.activations_and_grads.activations[0]  # (B*D, N, C)
+        grads = self.activations_and_grads.gradients[0]   # (B*D, N, C)
         acts, grads = self._remove_extra_tokens(acts, grads, source) # Remove CLS and extra tokens
 
         cam = self._compute_cam(acts, grads)  # Compute CAM using manual method
@@ -262,7 +264,7 @@ class GradCAM_MST(BaseSaliencyMethod):
         ).squeeze(1)  # Upsample to voxel space
 
         cam = cam - cam.min()
-        cam = cam / (cam.max() + 1e-8)  # Normalize
+        cam = cam / (cam.max() - cam.min() + 1e-8)  # Normalize
 
         return cam.squeeze(0)  # (D, H, W)
     

@@ -113,40 +113,36 @@ python scripts/main_predict_eval.py \
 ```bash
 python scripts/run_xai.py \
   --xai_method gradcam \
-  --run_folder DinoV3ViTB \
+  --run_folder DINOv3ViTB \
   --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
-  --dataset ODELIA \
-  --max_images_per_class 20
+  --dataset ODELIA
 ```
 
 ```bash
 python scripts/run_xai.py \
   --xai_method attention \
   --attention_method last_layer\
-  --run_folder DinoV3ViTB \
+  --run_folder DINOv3ViTB \
   --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
-  --dataset ODELIA \
-  --max_images_per_class 20
+  --dataset ODELIA
+```
+
+```bash
+python scripts/run_xai.py \
+  --xai_method attention \
+  --attention_method slice_weighted_rollout\
+  --run_folder DINOv3ViTB \
+  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA
 ```
 
 ```bash
 python scripts/run_xai.py \
   --xai_method attention \
   --attention_method Slice_weighted_rollout\
-  --run_folder DinoV3ViTB \
-  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
-  --dataset ODELIA \
-  --max_images_per_class 20
-```
-
-```bash
-python scripts/run_xai.py \
-  --xai_method attention \
-  --attention_method Slice_weighted_rollout\
-  --run_folder DinoV2ViTS \
+  --run_folder DINOv2ViTS \
   --checkpoint_name DinoV2ClassifierSlice_Final \
-  --dataset ODELIA \
-  --max_images_per_class 20
+  --dataset ODELIA
 ```
 
 ## Run Attention to get Importance
