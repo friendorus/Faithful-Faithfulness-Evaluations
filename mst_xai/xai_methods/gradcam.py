@@ -23,16 +23,7 @@ class GradCAM_MST(BaseSaliencyMethod):
         super().__init__(model)
         self.model.eval() # Set model to evaluation mode
         
-    ## We choose norm1 of the last block as the target layer for Grad-CAM, as it provides stronger gradients than norm2 or layer.norm in ViT-based MST.
-        # target_layer = self.model.encoder.norm
-        # target_layer = self.model.encoder.blocks[-1].norm2 
-        self.target_layer = self.model.encoder.blocks[-1].norm1 # Already try norm2 and layer.norm but they provide zero grads.
-        
-        self.activations_and_grads = ActivationsAndGradients(
-            model=self.model,
-            target_layers=[self.target_layer],
-            reshape_transform=None
-            )
+
 
     # --------------------------------------------------
     # Detect number of extra tokens (CLS + register/storage)
@@ -93,6 +84,17 @@ class GradCAM_MST(BaseSaliencyMethod):
     def _generate_cam(self, source, target_class: int):
         # source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
 
+        ## We choose norm1 of the last block as the target layer for Grad-CAM, as it provides stronger gradients than norm2 or layer.norm in ViT-based MST.
+        # target_layer = self.model.encoder.norm
+        # target_layer = self.model.encoder.blocks[-1].norm2 
+        self.target_layer = self.model.encoder.blocks[-1].norm1 # Already try norm2 and layer.norm but they provide zero grads.
+        
+        self.activations_and_grads = ActivationsAndGradients(
+            model=self.model,
+            target_layers=[self.target_layer],
+            reshape_transform=None
+            )
+
         B, C, D, H, W = source.shape
         patch_size = self.model.encoder.patch_embed.patch_size[0]
    
@@ -105,8 +107,10 @@ class GradCAM_MST(BaseSaliencyMethod):
         self.model.zero_grad()
         class_specific_logits.backward()  # Compute gradients
 
-        acts = self.activations_and_grads.activations[0]  # (B*D, N, C)
-        grads = self.activations_and_grads.gradients[0]   # (B*D, N, C)
+        acts = self.activations_and_grads.activations  # (B*D, N, C)
+        grads = self.activations_and_grads.gradients   # (B*D, N, C)
+        acts = acts[0]
+        grads = grads[0]
         acts, grads = self._remove_extra_tokens(acts, grads, source) # Remove CLS and extra tokens
 
         cam = self._compute_cam(acts, grads)  # Compute CAM using manual method
@@ -129,7 +133,7 @@ class GradCAM_MST(BaseSaliencyMethod):
 
         self.activations_and_grads.release()  # Clean up hooks
 
-        return cam.detach()
+        return cam.detach().cpu()
     
     
     # ----------------------------------

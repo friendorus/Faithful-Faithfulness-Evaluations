@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-import numpy as np
+# import numpy as np
 
 from mst_xai.xai_methods.base import BaseSaliencyMethod
 
@@ -10,8 +10,8 @@ from mst_xai.xai_methods.base import BaseSaliencyMethod
 # get_attention_maps() and/or get_slice_attention(). or create attention_rollout().
 # The imports define the intended scope of compatible models rather
 # than being used explicitly in this file.
-from mst.models.resnet import ResNet, ResNetSliceTrans
-from mst.models.dino import DinoV2ClassifierSlice
+# from mst.models.resnet import ResNet, ResNetSliceTrans
+# from mst.models.dino import DinoV2ClassifierSlice
 
 
 class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch) or Attention Rollout_MST
@@ -41,12 +41,14 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         self,
         model,
         mode: str = "spatial",   # "spatial" or "slice"
-        attention_method: str = "last_layer",  # "last_layer" or "rollout" or "slice_weighted_rollout"
+        attention_method: str = "last_layer",  # "last_layer"or "slice_weighted_rollout"
         resize_to_input: bool = True,
     ):
         super().__init__(model)
+        self.model.eval()  # Set model to evaluation mode
+
         assert mode in ["spatial", "slice"]
-        assert attention_method in ["last_layer", "rollout", "slice_weighted_rollout"]
+        assert attention_method in ["last_layer", "slice_weighted_rollout"]
 
         self.mode = mode
         self.resize_to_input = resize_to_input
