@@ -37,7 +37,6 @@ def parse_args():
     parser.add_argument("--use_tta", action="store_true")
 
     parser.add_argument("--mode", default="spatial", choices=['spatial', 'slice'])
-    parser.add_argument("--gradcam_method", default = 'hybrid', choices=['manual', 'library_encoder', 'hybrid'])
     parser.add_argument("--attention_method", default="last_layer", choices=['last_layer','slice_weighted_rollout'])
 
     # parser.add_argument("--max_importance", type=int, default=-1,
@@ -96,8 +95,7 @@ def load_model_unified(args, path_run, device):
 
 def build_xai(args, model):
     if args.xai_method == "gradcam":
-        return GradCAM_MST(model, 
-                           mode=args.gradcam_method
+        return GradCAM_MST(model,
                            ), 'gradcam'
 
     if args.xai_method == "attention":
@@ -120,7 +118,9 @@ def generate_saliency(args, xai, model, batch):
         # return xai.generate(batch, target_class=pred), pred
     with torch.no_grad():
         pred = model(batch["source"]).argmax(dim=1).item()
-    return xai.generate(batch, target_class=pred), pred
+    
+    saliency = xai.generate(batch, target_class=pred)
+    return saliency, pred
 
 
 # def select_indices(labels, args):
@@ -244,7 +244,7 @@ def run_pipeline(args):
     values = list(range(len(labels)))
 
     rows = []
-    image_counter = defaultdict(int)
+    # image_counter = defaultdict(int)
 
     for idx in tqdm(values):
 

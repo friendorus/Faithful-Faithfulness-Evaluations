@@ -114,7 +114,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             attn_maps = self.model.attention_maps  # list of [B*D, Heads, Tokens, Tokens]
             rollout = self._attention_rollout(attn_maps)  # [B*D, Heads, HW]
             slice_weights = attn_slice # [B, D] - slice attention from dino.py
-            attn_slice = slice_weights.view(-1, 1, 1)  # [B*D, 1, 1] - reshape to match rollout dimensions
+            slice_weights = slice_weights.view(-1, 1, 1)  # [B*D, 1, 1] - reshape to match rollout dimensions
             cls_attn = rollout * slice_weights   #[B*D, Heads, HW] - weight spatial attention by slice attention
             cls_attn = cls_attn.mean(dim=1) # [B*D, HW] - average over heads
 
@@ -192,54 +192,54 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # visualization, and compatibility with insertion/deletion metrics.
         # --------------------------------------------------
         sal = sal - sal.min()
-        sal = sal / (sal.max() + 1e-8)
+        sal = sal / (sal.max() - sal.min() + 1e-8)
     
         return sal.detach()
 
 
-    # --------------------------------------------------
-    # Visualization (same philosophy as GradCAM_MST)
-    # --------------------------------------------------
-    def visualize(
-        self,
-        image: torch.Tensor,
-        saliency: torch.Tensor,
-        alpha: float = 0.5,
-        slice_idx: int | None = None,
-    ):
-        """
-        Args:
-            image: [1, D, H, W]
-            saliency:
-                spatial → [D, H, W]
-                slice   → [D]
+    # # --------------------------------------------------
+    # # Visualization (same philosophy as GradCAM_MST)
+    # # --------------------------------------------------
+    # def visualize(
+    #     self,
+    #     image: torch.Tensor,
+    #     saliency: torch.Tensor,
+    #     alpha: float = 0.5,
+    #     slice_idx: int | None = None,
+    # ):
+    #     """
+    #     Args:
+    #         image: [1, D, H, W]
+    #         saliency:
+    #             spatial → [D, H, W]
+    #             slice   → [D]
 
-        Returns:
-            overlay (numpy)
-        """
+    #     Returns:
+    #         overlay (numpy)
+    #     """
 
-        img = image.squeeze().detach().cpu().numpy()
-        sal = saliency.detach().cpu().numpy()
+    #     img = image.squeeze().detach().cpu().numpy()
+    #     sal = saliency.detach().cpu().numpy()
 
-        if self.mode == "slice":
-            if slice_idx is None:
-                slice_idx = sal.argmax()
-            return sal, slice_idx
+    #     if self.mode == "slice":
+    #         if slice_idx is None:
+    #             slice_idx = sal.argmax()
+    #         return sal, slice_idx
 
-        # spatial mode
-        if slice_idx is None:
-            slice_scores = sal.reshape(sal.shape[0], -1).sum(axis=1)
-            slice_idx = slice_scores.argmax()
+    #     # spatial mode
+    #     if slice_idx is None:
+    #         slice_scores = sal.reshape(sal.shape[0], -1).sum(axis=1)
+    #         slice_idx = slice_scores.argmax()
 
-        img_slice = img[slice_idx]
-        sal_slice = sal[slice_idx]
+    #     img_slice = img[slice_idx]
+    #     sal_slice = sal[slice_idx]
 
-        sal_slice = (sal_slice - sal_slice.min()) / (sal_slice.max() + 1e-8)
+    #     sal_slice = (sal_slice - sal_slice.min()) / (sal_slice.max() + 1e-8)
 
-        overlay = (1 - alpha) * img_slice + alpha * sal_slice
-        overlay = np.clip(overlay, 0, 1)
+    #     overlay = (1 - alpha) * img_slice + alpha * sal_slice
+    #     overlay = np.clip(overlay, 0, 1)
 
-        return overlay
+    #     return overlay
     
     # def _attention_rollout(self, attn_maps):
     #     rollout = None
@@ -284,5 +284,5 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
     @staticmethod
     def _normalize(x: torch.Tensor):
         x = x - x.min()
-        x = x / (x.max() + 1e-8)
+        x = x / (x.max() - x.min() + 1e-8)
         return x

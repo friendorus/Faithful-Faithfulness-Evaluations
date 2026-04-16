@@ -139,7 +139,7 @@ python scripts/run_xai.py \
 ```bash
 python scripts/run_xai.py \
   --xai_method attention \
-  --attention_method Slice_weighted_rollout\
+  --attention_method slice_weighted_rollout\
   --run_folder DINOv2ViTS \
   --checkpoint_name DinoV2ClassifierSlice_Final \
   --dataset ODELIA
