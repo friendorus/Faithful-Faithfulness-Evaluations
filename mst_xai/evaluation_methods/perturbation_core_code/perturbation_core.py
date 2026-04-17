@@ -194,9 +194,7 @@ def perturbation_evaluation(
 
         logits = model(
             current,
-            save_attn = True,
-            src_key_padding_mask=batch.get("src_key_padding_mask"),
-            patch_mask=patch_mask if baseline == "attention_mask" else None
+            attn_mask=patch_mask if baseline == "attention_mask" else None
             )
         # prob = torch.softmax(logits, dim=1)[0, predicted_class] # convert logits into problability and select that prob to the class of choice.
         # confidences.append(prob.item()) #Count Prob of only that class as confidences
