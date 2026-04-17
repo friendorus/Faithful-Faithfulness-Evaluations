@@ -103,7 +103,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         """
     
         source = batch["source"].to(self.model.device)
-        src_key_padding_mask = batch.get("src_key_padding_mask", None)
+        # src_key_padding_mask = batch.get("src_key_padding_mask", None)
     
         # --------------------------------------------------
         # Forward pass (attention stored internally)
@@ -115,9 +115,9 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         # --------------------------------------------------
         _ = self.model( 
             source,
-            src_key_padding_mask=src_key_padding_mask,
+            # src_key_padding_mask=src_key_padding_mask,
             save_attn=True,
-            use_softmax=True,
+            # use_softmax=True,
         )
     
         # --------------------------------------------------
