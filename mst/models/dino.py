@@ -55,6 +55,8 @@ class DinoV2ClassifierSlice(BasicClassifier):
         self.attention_maps_slice = []
         self.use_registers = use_registers
         self.slice_fusion_type = slice_fusion
+        self.enable_attn_mask = False
+        self.attn_mask = None
 
         if pretrained:
             if dino == 'v2':
@@ -121,6 +123,8 @@ class DinoV2ClassifierSlice(BasicClassifier):
 
 
     def forward(self, source, save_attn=False, src_key_padding_mask=None, **kwargs):   
+        if save_attn and self.enable_attn_mask:
+            raise NotImplementedError("Attention mask not implemented for attention saving mode.")
 
         if save_attn:
             fastpath_enabled = torch.backends.mha.get_fastpath_enabled()
@@ -129,6 +133,9 @@ class DinoV2ClassifierSlice(BasicClassifier):
             self.attention_maps = []
             self.hooks = []
             self.register_hooks()
+        
+        if self.enable_attn_mask:
+            self.register_attention_mask(self.attn_mask)
 
 
         x = source.to(self.device) # [B, C, D, H, W]
@@ -172,6 +179,9 @@ class DinoV2ClassifierSlice(BasicClassifier):
         if save_attn:
             torch.backends.mha.set_fastpath_enabled(fastpath_enabled)
             self.deregister_hooks()
+
+        if self.enable_attn_mask:
+            self.deregister_attention_mask()
 
         # Logits 
         if kwargs.get('without_linear', False):
@@ -330,4 +340,43 @@ class DinoV2ClassifierSlice(BasicClassifier):
             if isinstance(mod, nn.MultiheadAttention):
                 mod.forward = mod.foward_orig
 
+    def register_attention_mask(self, attn_mask):
+        def add_attention_mask_v3(mod, attn_mask):
+            compute_attention_original = mod.compute_attention
+            def compute_attention_injected(self4, qkv, attn_mask=self.attn_mask, *args, **kwargs):
+                
+                attn_bias = kwargs.get('attn_bias', None)
+                assert attn_bias is None
 
+                rope = kwargs.get('rope', None)
+                
+                B, N, _ = qkv.shape
+                C = self4.qkv.in_features
+
+                qkv = qkv.reshape(B, N, 3, self4.num_heads, C // self4.num_heads)
+                q, k, v = torch.unbind(qkv, 2)
+                q, k, v = [t.transpose(1, 2) for t in [q, k, v]]
+                if rope is not None:
+                    q, k = self4.apply_rope(q, k, rope)
+
+                if attn_mask is not None:
+                    assert attn_mask.shape[-2:] == (N, N)
+                x = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
+
+                x = x.transpose(1, 2)
+                return x.reshape([B, N, C])
+            mod.compute_attention = lambda qkv, *args, **kwargs: compute_attention_injected(mod, qkv, *args, **kwargs)
+            mod.compute_attention_original = compute_attention_original
+
+        # Hook Dino Attention
+        for name, mod in self.encoder.named_modules():
+            if name.endswith('.attn'):
+                # DINOv3
+                if hasattr(mod, 'compute_attention'):
+                    add_attention_mask_v3(mod, attn_mask)                
+
+    def deregister_attention_mask(self):
+        for name, mod in self.encoder.named_modules():
+            if name.endswith('.attn'):
+                if hasattr(mod, 'compute_attention_original'):
+                    mod.compute_attention = mod.compute_attention_original
