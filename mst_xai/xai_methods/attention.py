@@ -150,7 +150,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # Slice-weighted attention rollout
             attn_maps = self.model.attention_maps  # list of [B*D, Heads, Tokens, Tokens]
             rollout = self._attention_rollout(attn_maps, num_special = num_special, discard_ratio=0.9)  # [B*D, N-1-4]
-            slice_weights = attn_slice.unsqueeze(-1) # [B*D,1]
+            slice_weights = attn_slice.squeeze(-1) # [B*D,1]
             cls_attn = slice_weights * rollout  # [32, 196]
         else:
             raise ValueError(f"Unknown attention method: {self.attention_method}")
