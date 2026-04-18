@@ -122,7 +122,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
         
 
 
-    def forward(self, source, save_attn=False, src_key_padding_mask=None, **kwargs):   
+    def forward(self, source, save_attn=False, src_key_padding_mask=None, attn_mask=None, **kwargs):   
         if save_attn and self.attn_mask is not None:
             raise NotImplementedError("Attention mask not implemented for attention saving mode.")
 
@@ -134,8 +134,10 @@ class DinoV2ClassifierSlice(BasicClassifier):
             self.hooks = []
             self.register_hooks()
         
+        self.attn_mask = attn_mask
         if self.attn_mask is not None:
-            self.register_attention_mask(self.attn_mask)
+            self.register_attention_mask()
+
 
 
         x = source.to(self.device) # [B, C, D, H, W]
@@ -322,7 +324,6 @@ class DinoV2ClassifierSlice(BasicClassifier):
                 enable_attention(mod)
                 self.hooks.append(mod.register_forward_hook(append_attention_maps))
 
-
     def deregister_hooks(self):
         for handle in self.hooks:
             handle.remove()
@@ -340,7 +341,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
             if isinstance(mod, nn.MultiheadAttention):
                 mod.forward = mod.foward_orig
 
-    def register_attention_mask(self, attn_mask):
+    def register_attention_mask(self):
         def add_attention_mask_v3(mod):
             compute_attention_original = mod.compute_attention
             def compute_attention_injected(self4, qkv, *args, **kwargs):
@@ -349,6 +350,8 @@ class DinoV2ClassifierSlice(BasicClassifier):
                 assert attn_bias is None
 
                 rope = kwargs.get('rope', None)
+
+                attn_mask = self.attn_mask
                 
                 B, N, _ = qkv.shape
                 C = self4.qkv.in_features
