@@ -145,24 +145,6 @@ python scripts/run_xai.py \
   --dataset ODELIA
 ```
 
-## Run Attention to get Importance
-
-Run Script: [scripts/run_attention.py](scripts/run_attention.py)
-
-- Use `--only_images` to get saliency maps
-- Use `--max_image_per_class` to set limit of saliency map that you want
-- Use `--attention_method` to use attention rollout across all Transformer encoder layers (include slice attention)
-  - `last_layer` for Raw Attention,
-  - `rollout` for Attention Rollout and
-  - `slice_weighted_rollout` for Slice-aware Attention Rollout
-- Eg.
-
-```bash
-python scripts/run_attention.py \
-  --run_folder ODELIA/DinoV2ClassifierSlice_Final \
-  --attention_method rollout --max_images_per_class 20
-```
-
 Outputs:
 
 ```bash
@@ -206,13 +188,16 @@ Run Script: [scripts/run_perturbation_evaluation.py](scripts/run_perturbation_ev
 
 ```bash
 python scripts/run_perturbation_evaluation.py \
-  --run_folder ODELIA/DinoV2ClassifierSlice_Final \
-  --xai_method attention_rollout \
+  --run_folder DINOv3ViTB \
+  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA \
+  --xai_method gradcam \
   --mode all \
-  --baseline black \
+  --replacement attention_mask \
   --steps 20 \
   --save_curves
 ```
+
 
 - Use "--mode" with choices for `deletion`, `insertion`, `negative` or `all`
   - `deletion` is for Deletion: Initail image is original image and replace from highest importance-scored patch to lowest

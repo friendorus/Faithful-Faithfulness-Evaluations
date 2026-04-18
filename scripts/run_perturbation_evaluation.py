@@ -25,14 +25,17 @@ from mst_xai.utils.load_saliency import load_saliency
 # ============================================================
 
 parser = argparse.ArgumentParser(description="Unified perturbation-based faithfulness evaluation")
+parser.add_argument("--dataset", default="ODELIA", type=str)
+parser.add_argument("--model_name", default="DinoV2ClassifierSlice", type=str)
 parser.add_argument("--run_dir", default="./runs", type=str)
 parser.add_argument("--run_folder", required=True, type=str)
+parser.add_argument("--checkpoint_name", default=None, help= "Specific checkpoint file name (e.g., best.chkpt)")
 parser.add_argument("--output_dir", default="./", type=str)
 parser.add_argument("--mode", required=True, choices=["deletion", "insertion", "negative", "all"], help="Perturbation mode to run",)
-parser.add_argument("--xai_method", required=True, choices=["gradcam", "last_layer", "rollout","slice_weighted_rollout"], help="Which saliency 'folder' to evaluate",)
+parser.add_argument("--xai_method", required=True, choices=["gradcam", "last_layer", "slice_weighted_rollout"])
 parser.add_argument("--steps", type=int, default=20)
 parser.add_argument("--max_samples", type=int, default=-1, help="-1 = all available saliency files")
-parser.add_argument("--baseline", default="minimum-intensity", choices=["minimum-intensity", "black-3", "black-5", "black-10", 
+parser.add_argument("--replacement", default="minimum-intensity", choices=["minimum-intensity", "black-3", "black-5", "black-10", 
                                                                         "white-5", "white-10", "zero", "mean", "zero_conf", "gaussian_blur",
                                                                          "attention_mask"], 
                                                                         help="Baseline for perturbation",)
@@ -46,10 +49,12 @@ args = parser.parse_args()
 # ============================================================
 
 run_folder = Path(args.run_folder)
-dataset_name = run_folder.parent.name
-model_name = run_folder.name.split("_", 1)[0]
+dataset_name = args.dataset
+model_name = args.model_name
 
 path_run = Path(args.run_dir) / run_folder
+if args.checkpoint_name:
+    path_run = path_run / args.checkpoint_name
 results_path = Path(args.output_dir) / "results" / run_folder
 saliency_root = results_path / "saliency_results" / args.xai_method
 
@@ -63,7 +68,7 @@ torch.set_float32_matmul_precision("high")
 # Load model
 # ============================================================
 
-model = load_model("DinoV2ClassifierSlice", path_run, device)
+model = load_model(model_name, path_run, device)
 model.to(device).eval()
 
 patch_size = model.encoder.patch_embed.patch_size
@@ -144,7 +149,7 @@ for mode in modes:
     results_root = results_path / "evaluation_results" / mode
     results_root.mkdir(parents=True, exist_ok=True)
 
-    curve_root = results_root / f"{mode}_curves" / args.xai_method / args.baseline
+    curve_root = results_root / f"{mode}_curves" / args.xai_method / args.replacement
 
     if args.save_curves:
         curve_root.mkdir(parents=True, exist_ok=True)
@@ -191,7 +196,7 @@ for mode in modes:
             predicted_class=predicted_class,
             patch_size=patch_size,
             steps=args.steps,
-            baseline=args.baseline,
+            replacement=args.replacement,
         )
 
         predicted_confidences = confidences[:, predicted_class]
@@ -209,7 +214,7 @@ for mode in modes:
             "mode": mode,
             "predicted_class": predicted_class,
             "auc": auc_score,
-            "baseline": args.baseline,
+            "replacement": args.replacement,
         })
 
         curve_dict =  {
@@ -221,12 +226,12 @@ for mode in modes:
                     "predicted_confidences": predicted_confidences.cpu().numpy(),
                     "predicted_normalized_confidences": predicted_confidences_normalized.cpu().numpy(),
                     "auc": auc_score,
-                    "baseline": args.baseline,
+                    "replacement": args.replacement,
                 }
 
         if args.save_curves:
             np.save(
-                curve_root / f"{uid}_curve_{args.baseline}.npy",
+                curve_root / f"{uid}_curve_{args.replacement}.npy",
                 curve_dict,
                 allow_pickle=True,
             )
@@ -239,7 +244,7 @@ for mode in modes:
 
     df = pd.DataFrame(rows)
 
-    per_sample_csv = results_root / "csv_files" / f"{mode}_{args.xai_method}_{args.baseline}.csv"
+    per_sample_csv = results_root / "csv_files" / f"{mode}_{args.xai_method}_{args.replacement}.csv"
     os.makedirs(os.path.dirname(per_sample_csv), exist_ok=True)
     df.to_csv(per_sample_csv, index=False)
 
@@ -251,7 +256,7 @@ for mode in modes:
     # ========================================================
     # Save summary
     # ========================================================
-    summary_csv = results_root / "csv_files" / f"{mode}_{args.xai_method}_{args.baseline}_summary.csv"
+    summary_csv = results_root / "csv_files" / f"{mode}_{args.xai_method}_{args.replacement}_summary.csv"
     os.makedirs(os.path.dirname(summary_csv), exist_ok=True)
     summary.to_csv(summary_csv, index=False)
 

@@ -54,44 +54,44 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         self.resize_to_input = resize_to_input
         self.attention_method = attention_method
 
-    # --------------------------------------------------
-    # Detect number of extra tokens (CLS + register/storage)
-    # --------------------------------------------------
-    def _get_num_extra_tokens(self, source):
-        """
-        This method detects how many extra tokens (beyond the CLS token) are present in the ViT encoder's output.        
-        # Remove CLS + extra tokens (we only want patch tokens for spatial saliency)
-        # ViT tokes = [CLS] + [extra tokens] + [patch tokens]
-        # For DinoV2, there are possible to have only 1 CLS toke or extra register tokens,
-        # For DinoV3, there are possible to have 1 CLS token + 4 storage tokens
-        """
-        if hasattr(self, "num_extra_tokens"):
-            return self.num_extra_tokens
+    # # --------------------------------------------------
+    # # Detect number of extra tokens (CLS + register/storage)
+    # # --------------------------------------------------
+    # def _get_num_extra_tokens(self, source):
+    #     """
+    #     This method detects how many extra tokens (beyond the CLS token) are present in the ViT encoder's output.        
+    #     # Remove CLS + extra tokens (we only want patch tokens for spatial saliency)
+    #     # ViT tokes = [CLS] + [extra tokens] + [patch tokens]
+    #     # For DinoV2, there are possible to have only 1 CLS toke or extra register tokens,
+    #     # For DinoV3, there are possible to have 1 CLS token + 4 storage tokens
+    #     """
+    #     if hasattr(self, "num_extra_tokens"):
+    #         return self.num_extra_tokens
 
-        # No gradient needed -> just inspect model structure to determine how many extra tokens there are (e.g., CLS + storage tokens)
-        with torch.no_grad():
-            # Take one slice for probing
-            x_enc = source[:1]              # (1,1,D,H,W)
-            x_enc = x_enc[:, :, 0]          # take one slice → (1,1,H,W)
-            # Convert to 3-channel by repeating the single channel (ViT requires 3-channel input) → (1,3,H,W)
-            x_enc = x_enc.repeat(1, 3, 1, 1)  # → (1,3,H,W)
+    #     # No gradient needed -> just inspect model structure to determine how many extra tokens there are (e.g., CLS + storage tokens)
+    #     with torch.no_grad():
+    #         # Take one slice for probing
+    #         x_enc = source[:1]              # (1,1,D,H,W)
+    #         x_enc = x_enc[:, :, 0]          # take one slice → (1,1,H,W)
+    #         # Convert to 3-channel by repeating the single channel (ViT requires 3-channel input) → (1,3,H,W)
+    #         x_enc = x_enc.repeat(1, 3, 1, 1)  # → (1,3,H,W)
 
-            # Get token structure
-            out = self.model.encoder.forward_features(x_enc)
+    #         # Get token structure
+    #         out = self.model.encoder.forward_features(x_enc)
 
-        # Detect exttra tokens based on the output of the encoder's forward_features method.
-        # If new models have different token structures, this logic may need to be updated.
-        if "x_storage_tokens" in out:
-            # DinoV3 (CLS + storage tokens)
-            self.num_extra_tokens = out["x_storage_tokens"].shape[1] 
-        elif "x_norm_regtokens" in out:
-            # DinoV2 (CLS + normalized register tokens)
-            self.num_extra_tokens = out["x_norm_regtokens"].shape[1]
-        else:
-            # Default to 0 if no extra tokens are detected (only CLS token)
-            self.num_extra_tokens = 0
+    #     # Detect exttra tokens based on the output of the encoder's forward_features method.
+    #     # If new models have different token structures, this logic may need to be updated.
+    #     if "x_storage_tokens" in out:
+    #         # DinoV3 (CLS + storage tokens)
+    #         self.num_extra_tokens = out["x_storage_tokens"].shape[1] 
+    #     elif "x_norm_regtokens" in out:
+    #         # DinoV2 (CLS + normalized register tokens)
+    #         self.num_extra_tokens = out["x_norm_regtokens"].shape[1]
+    #     else:
+    #         # Default to 0 if no extra tokens are detected (only CLS token)
+    #         self.num_extra_tokens = 0
 
-        return self.num_extra_tokens
+    #     return self.num_extra_tokens
     # --------------------------------------------------
     # Core Attention Saliency
     # --------------------------------------------------
@@ -103,6 +103,8 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         """
     
         source = batch["source"].to(self.model.device)
+        num_special = 4 # Storage tokens in DINOv3 (not include CLS token)
+                
         # src_key_padding_mask = batch.get("src_key_padding_mask", None)
     
         # --------------------------------------------------
@@ -126,7 +128,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # - attn_spatial: patch-level self-attention (e.g. ViT encoder)
             # - attn_slice: slice-level attention (e.g. slice fusion transformer)
             # At least one of these must be implemented by the model.
-        num_special = self._get_num_extra_tokens(source)
+
         # --------------------------------------------------
         attn_slice = self.model.get_slice_attention()       # [32,1,1]
         attn_slice = attn_slice.squeeze(-1) # [32,1] - remove last dim
@@ -148,7 +150,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         elif self.attention_method == "slice_weighted_rollout":
             # Slice-weighted attention rollout
             attn_maps = self.model.attention_maps  # list of [B*D, Heads, Tokens, Tokens]
-            rollout = self._attention_rollout(attn_maps, num_spatial = num_special)  # [B*D, N-1-4]
+            rollout = self._attention_rollout(attn_maps, num_special = num_special)  # [B*D, N-1-4]
             slice_weights = attn_slice # [B*D,1]
             cls_attn = slice_weights * rollout  
         else:
@@ -262,7 +264,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
     #     return rollout[:, 0, 1:]  # CLS → patch attention # [B, HW]
 
 
-    def _attention_rollout(self, attn_maps, num_spatial):
+    def _attention_rollout(self, attn_maps, num_special):
 
         rollout = None
 
@@ -280,7 +282,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             rollout = attn if rollout is None else torch.matmul(attn, rollout) # Recursive multiplication # [B, N, N] @ [B, N, N] → [B, N, N]
         # CLS → patches
 
-        rollout = rollout[:, 0, 1+num_spatial:]   # [B, N]
+        rollout = rollout[:, 0, 1+num_special:]   # [B, N]
 
         rollout = rollout / rollout.sum(dim=-1, keepdim=True) # [B, N] Normalize final rollout
 

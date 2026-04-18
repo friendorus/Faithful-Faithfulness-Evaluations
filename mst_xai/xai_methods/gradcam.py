@@ -27,45 +27,45 @@ class GradCAM_MST(BaseSaliencyMethod):
 
     # --------------------------------------------------
     # Detect number of extra tokens (CLS + register/storage)
-    # --------------------------------------------------
-    def _get_num_extra_tokens(self, source):
-        """
-        This method detects how many extra tokens (beyond the CLS token) are present in the ViT encoder's output.        
-        # Remove CLS + extra tokens (we only want patch tokens for spatial saliency)
-        # ViT tokes = [CLS] + [extra tokens] + [patch tokens]
-        # For DinoV2, there are possible to have only 1 CLS toke or extra register tokens,
-        # For DinoV3, there are possible to have 1 CLS token + 4 storage tokens
-        """
-        if hasattr(self, "num_extra_tokens"):
-            return self.num_extra_tokens
+    # # --------------------------------------------------
+    # def _get_num_extra_tokens(self, source):
+    #     """
+    #     This method detects how many extra tokens (beyond the CLS token) are present in the ViT encoder's output.        
+    #     # Remove CLS + extra tokens (we only want patch tokens for spatial saliency)
+    #     # ViT tokes = [CLS] + [extra tokens] + [patch tokens]
+    #     # For DinoV2, there are possible to have only 1 CLS toke or extra register tokens,
+    #     # For DinoV3, there are possible to have 1 CLS token + 4 storage tokens
+    #     """
+    #     if hasattr(self, "num_extra_tokens"):
+    #         return self.num_extra_tokens
 
-        # No gradient needed -> just inspect model structure to determine how many extra tokens there are (e.g., CLS + storage tokens)
-        with torch.no_grad():
-            # Take one slice for probing
-            x_enc = source[:1]              # (1,1,D,H,W)
-            x_enc = x_enc[:, :, 0]          # take one slice → (1,1,H,W)
-            # Convert to 3-channel by repeating the single channel (ViT requires 3-channel input) → (1,3,H,W)
-            x_enc = x_enc.repeat(1, 3, 1, 1)  # → (1,3,H,W)
+    #     # No gradient needed -> just inspect model structure to determine how many extra tokens there are (e.g., CLS + storage tokens)
+    #     with torch.no_grad():
+    #         # Take one slice for probing
+    #         x_enc = source[:1]              # (1,1,D,H,W)
+    #         x_enc = x_enc[:, :, 0]          # take one slice → (1,1,H,W)
+    #         # Convert to 3-channel by repeating the single channel (ViT requires 3-channel input) → (1,3,H,W)
+    #         x_enc = x_enc.repeat(1, 3, 1, 1)  # → (1,3,H,W)
 
-            # Get token structure
-            out = self.model.encoder.forward_features(x_enc)
+    #         # Get token structure
+    #         out = self.model.encoder.forward_features(x_enc)
 
-        # Detect exttra tokens based on the output of the encoder's forward_features method.
-        # If new models have different token structures, this logic may need to be updated.
-        if "x_storage_tokens" in out:
-            # DinoV3 (CLS + storage tokens)
-            self.num_extra_tokens = out["x_storage_tokens"].shape[1] 
-        elif "x_norm_regtokens" in out:
-            # DinoV2 (CLS + normalized register tokens)
-            self.num_extra_tokens = out["x_norm_regtokens"].shape[1]
-        else:
-            # Default to 0 if no extra tokens are detected (only CLS token)
-            self.num_extra_tokens = 0
+    #     # Detect exttra tokens based on the output of the encoder's forward_features method.
+    #     # If new models have different token structures, this logic may need to be updated.
+    #     if "x_storage_tokens" in out:
+    #         # DinoV3 (CLS + storage tokens)
+    #         self.num_extra_tokens = out["x_storage_tokens"].shape[1] 
+    #     elif "x_norm_regtokens" in out:
+    #         # DinoV2 (CLS + normalized register tokens)
+    #         self.num_extra_tokens = out["x_norm_regtokens"].shape[1]
+    #     else:
+    #         # Default to 0 if no extra tokens are detected (only CLS token)
+    #         self.num_extra_tokens = 0
 
-        return self.num_extra_tokens
+    #     return self.num_extra_tokens
     
-    def _remove_extra_tokens(self, acts, grads, source):
-        num_extra_tokens = self._get_num_extra_tokens(source)
+    def _remove_extra_tokens(self, acts, grads):
+        num_extra_tokens = 4 # For DINOv3, there are 4 storage tokens in addition to the CLS token. For DINOv2, there are normalized register tokens. Adjust as needed for different models.
         # Remove CLS and extra tokens from activations and gradients to focus on patch tokens
         acts = acts[:, 1 + num_extra_tokens:, :] # 1+num_extra_tokens to skip CLS and extra tokens
         grads = grads[:, 1 + num_extra_tokens:, :]
@@ -111,7 +111,7 @@ class GradCAM_MST(BaseSaliencyMethod):
         grads = self.activations_and_grads.gradients   # (B*D, N, C)
         acts = acts[0]
         grads = grads[0]
-        acts, grads = self._remove_extra_tokens(acts, grads, source) # Remove CLS and extra tokens
+        acts, grads = self._remove_extra_tokens(acts, grads) # Remove CLS and extra tokens
 
         cam = self._compute_cam(acts, grads)  # Compute CAM using manual method
 

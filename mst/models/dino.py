@@ -47,6 +47,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
             slice_fusion='transformer',
             freeze=False,
             dino='v2',
+            attn_mask=None,
             **kwargs
         ):
         super().__init__(in_ch, out_ch, spatial_dims=spatial_dims, optimizer_kwargs=optimizer_kwargs, **kwargs)
@@ -55,8 +56,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
         self.attention_maps_slice = []
         self.use_registers = use_registers
         self.slice_fusion_type = slice_fusion
-        self.enable_attn_mask = False
-        self.attn_mask = None
+        self.attn_mask = attn_mask
 
         if pretrained:
             if dino == 'v2':
@@ -123,7 +123,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
 
 
     def forward(self, source, save_attn=False, src_key_padding_mask=None, **kwargs):   
-        if save_attn and self.enable_attn_mask:
+        if save_attn and self.attn_mask is not None:
             raise NotImplementedError("Attention mask not implemented for attention saving mode.")
 
         if save_attn:
@@ -134,7 +134,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
             self.hooks = []
             self.register_hooks()
         
-        if self.enable_attn_mask:
+        if self.attn_mask is not None:
             self.register_attention_mask(self.attn_mask)
 
 
@@ -180,7 +180,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
             torch.backends.mha.set_fastpath_enabled(fastpath_enabled)
             self.deregister_hooks()
 
-        if self.enable_attn_mask:
+        if self.attn_mask is not None:
             self.deregister_attention_mask()
 
         # Logits 
@@ -341,9 +341,9 @@ class DinoV2ClassifierSlice(BasicClassifier):
                 mod.forward = mod.foward_orig
 
     def register_attention_mask(self, attn_mask):
-        def add_attention_mask_v3(mod, attn_mask):
+        def add_attention_mask_v3(mod):
             compute_attention_original = mod.compute_attention
-            def compute_attention_injected(self4, qkv, attn_mask=self.attn_mask, *args, **kwargs):
+            def compute_attention_injected(self4, qkv, *args, **kwargs):
                 
                 attn_bias = kwargs.get('attn_bias', None)
                 assert attn_bias is None
@@ -373,7 +373,7 @@ class DinoV2ClassifierSlice(BasicClassifier):
             if name.endswith('.attn'):
                 # DINOv3
                 if hasattr(mod, 'compute_attention'):
-                    add_attention_mask_v3(mod, attn_mask)                
+                    add_attention_mask_v3(mod)                
 
     def deregister_attention_mask(self):
         for name, mod in self.encoder.named_modules():
