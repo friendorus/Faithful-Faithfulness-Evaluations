@@ -158,7 +158,6 @@ def perturbation_evaluation(
         repl = source.mean() * torch.ones_like(source)
 
     elif replacement == "gaussian_blur": 
-        assert repl.shape == source.shape
         # apply gaussian blur to the whole image (need to be at patch level, not image level)
         repl = gaussian_blur_patchwise(source, 
                                        patch_size=patch_size, 

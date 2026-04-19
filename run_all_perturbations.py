@@ -2,19 +2,20 @@ import subprocess
 import itertools
 import sys
 
-RUN_FOLDER = "ODELIA/DinoV2ClassifierSlice_Final"
+RUN_FOLDER = "DINOv3ViTB"
+CHECKPOINT = "challenge_mstv3-vit_sch_CB_sub2_best.chkpt"  # specify the checkpoint to evaluate
 
 BASELINES = [
-    "minimum-intensity",
-    "black-3",
-    "black-5",
-    "black-10",
-    "white-5",
-    "white-10",
-    "zero",
-    "mean",
+    # "minimum-intensity",
+    # "black-3",
+    # "black-5",
+    # "black-10",
+    # "white-5",
+    # "white-10",
+    # "zero",
+    # "mean",
     "gaussian_blur",
-    "attention_mask",
+    # "attention_mask",
 ]
 
 XAI_METHODS = [
@@ -27,6 +28,8 @@ XAI_METHODS = [
 COMMON_ARGS = [
     "python", "scripts/run_perturbation_evaluation.py",
     "--run_folder", RUN_FOLDER,
+    "--checkpoint_name", CHECKPOINT,
+    "--dataset", "ODELIA",
     "--mode", "all",
     "--steps", "20",
     "--save_curves",
@@ -42,7 +45,7 @@ def run():
     for baseline, xai in itertools.product(BASELINES, XAI_METHODS):
         cmd = COMMON_ARGS + [
             "--xai_method", xai,
-            "--baseline", baseline
+            "--replacement", baseline
         ]
 
         print(f"\n[{counter}/{total}] Running: XAI={xai} | BASELINE={baseline}")
