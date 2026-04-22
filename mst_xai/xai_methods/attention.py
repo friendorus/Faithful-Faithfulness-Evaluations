@@ -149,7 +149,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         elif self.attention_method == "slice_weighted_rollout":
             # Slice-weighted attention rollout
             attn_maps = self.model.attention_maps  # list of [B*D, Heads, Tokens, Tokens]
-            rollout = self._attention_rollout(attn_maps, num_special = num_special, discard_ratio=0.9)  # [B*D, N-1-4]
+            rollout = self._attention_rollout(attn_maps, num_special = num_special)  # [B*D, N-1-4]
             slice_weights = attn_slice.squeeze(-1) # [B*D,1]
             cls_attn = slice_weights * rollout  # [32, 196]
         else:
@@ -263,28 +263,29 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
     #     return rollout[:, 0, 1:]  # CLS → patch attention # [B, HW]
 
 
-    def _attention_rollout(self, attn_maps, num_special, discard_ratio):
+    def _attention_rollout(self, attn_maps, num_special):
 
         rollout = None
 
         for attn in attn_maps:
             # [B, Heads, N , N]
-            attn = attn.max(dim=1).values  # Max over heads to get [B, N, N]
+            # attn = attn.max(dim=1).values  # Max over heads to get [B, N, N]
+            attn = attn.mean(dim=1)  # Average over heads to get [B, N, N]
             # Discard lowes attention values (reduce noise)
             B, N, _ = attn.shape
 
-            if discard_ratio > 0:
-                k = int(N * discard_ratio)
-                if k > 0:
-                    # find indices of smallest values per row
-                    vals, idx = torch.topk(attn, k=k, dim=-1, largest=False)
-                    # build mask
-                    mask = torch.zeros_like(attn, dtype=torch.bool)
-                    mask.scatter_(-1, idx, True)
-                    # protect CLS + special tokens (columns)
-                    mask[:, :, :1 + num_special] = False
-                    # apply mask
-                    attn = attn.masked_fill(mask, 0)
+            # if discard_ratio > 0:
+                # k = int(N * discard_ratio)
+                # if k > 0:
+                    ## find indices of smallest values per row
+                    # vals, idx = torch.topk(attn, k=k, dim=-1, largest=False)
+                    ## build mask
+                    # mask = torch.zeros_like(attn, dtype=torch.bool)
+                    # mask.scatter_(-1, idx, True)
+                    ## protect CLS + special tokens (columns)
+                    # mask[:, :, :1 + num_special] = False
+                    ## apply mask
+                    # attn = attn.masked_fill(mask, 0)
 
             I = torch.eye(attn.size(-1), device=attn.device) # [N, N]
             

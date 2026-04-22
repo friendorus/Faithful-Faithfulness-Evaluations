@@ -127,7 +127,7 @@ class GradCAM_MST(BaseSaliencyMethod):
             align_corners=False
         ).squeeze(1)  # Upsample to voxel space
 
-        cam = cam.squeeze(0)  #
+        cam = cam.squeeze(0)  
         cam = cam - cam.min()
         cam = cam / (cam.max() - cam.min() + 1e-8)  # Normalize
 
