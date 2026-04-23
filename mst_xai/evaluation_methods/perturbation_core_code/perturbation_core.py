@@ -14,6 +14,8 @@ def perturbation_evaluation(
     mode: str,  # "deletion" | "insertion" | "negative"
     replacement: str = "minimum-intensity",  # "minimum-intensity" | "attention_mask" | "black-3" | "black-5" | "black-10" | "white-5" | "white-10" | "zero" | "mean" | "zero_conf" | "gaussian_blur" 
     reference_source: torch.Tensor | None = None,
+    return_images=False,
+    slice_index=None # for specific slice visualization
 ):
     """
     Generic patch-level perturbation evaluation.
@@ -214,6 +216,7 @@ def perturbation_evaluation(
     raw_logits = []
     confidences = [] # in this mean "probabilities" on each class
     percentages = []
+    saved_images = [] if return_images else None
 
     prev_k = 0
     for step in range(steps + 1):
@@ -257,7 +260,11 @@ def perturbation_evaluation(
             attn_mask = attn_mask.repeat(B, 1, 1, 1) # handle incase B != 1
         else:
             attn_mask = None
-       
+
+        if return_images: 
+            img_slice = current[0,0, slice_index].detach().cpu().clone()
+            saved_images.append(img_slice)
+
     
         logits = model(
             current,
@@ -291,7 +298,10 @@ def perturbation_evaluation(
     pred_curve = confidences_normalized[:, predicted_class]
     auc_score = auc(percentages, pred_curve.tolist())
 
-    return percentages, raw_logits,confidences, confidences_normalized, auc_score
+    if return_images:
+        return percentages, raw_logits, confidences, confidences_normalized, auc_score, saved_images
+    else:   
+        return percentages, raw_logits, confidences, confidences_normalized, auc_score
 
 
 import torch
