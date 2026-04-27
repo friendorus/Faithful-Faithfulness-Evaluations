@@ -19,8 +19,8 @@ BASELINES = [
 ]
 
 XAI_METHODS = [
-    # "gradcam",
-    # "last_layer",
+    "gradcam",
+    "last_layer",
     "slice_weighted_rollout",
 ]
 
@@ -30,6 +30,7 @@ COMMON_ARGS = [
     "--checkpoint_name", CHECKPOINT,
     "--dataset", "ODELIA",
     "--mode", "all",
+    # "--mode", "deletion",
     "--steps", "20",
     "--save_curves",
 ]

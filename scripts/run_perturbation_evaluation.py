@@ -61,7 +61,6 @@ saliency_root = results_path / "saliency_results" / args.xai_method
 assert saliency_root.exists(), f"Saliency folder not found: {saliency_root}"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-torch.set_float32_matmul_precision("high")
 
 
 # ============================================================
@@ -188,7 +187,7 @@ for mode in modes:
         # ----------------------------------------------
         # Perturbation evaluation
         # ----------------------------------------------
-        model.eval()
+        # model.eval()
         percentages, raw_logits, confidences, confidences_normalized, auc_score = eval_fn(
             model=model,
             batch=batch,

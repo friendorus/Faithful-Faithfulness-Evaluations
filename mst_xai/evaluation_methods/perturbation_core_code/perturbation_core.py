@@ -89,7 +89,7 @@ def perturbation_evaluation(
             masked_tokens = (~flat_mask[d]).nonzero(as_tuple=True)[0] + offset
 
             # inf means no attention
-            attn_mask[d, :, :, masked_tokens] = -1e9
+            attn_mask[d, :, :, masked_tokens] = float('-inf')
             # attn_mask[d, :, masked_tokens, :] = -1e9
         return attn_mask
     
