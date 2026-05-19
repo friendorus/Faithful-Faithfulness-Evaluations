@@ -80,8 +80,17 @@ class GradCAM_MST(BaseSaliencyMethod):
         cam = (acts * weights).sum(dim=2)  # (B*D, N) # Linear combination of activations weighted by importance scores (gradients)
         cam = torch.relu(cam)  
         return cam
+    
+    # --------------------------------------------------
+    # HiResCAM
+    # --------------------------------------------------    
+    def _compute_hires_cam(self, acts, grads):
+        # HiResCAM method: element-wise product of activations and gradients, then sum over channels
+        cam = (acts * grads).sum(dim=2)  # (B*D, N) # Element-wise product followed by summation over channels
+        cam = torch.relu(cam)  
+        return cam
 
-    def _generate_cam(self, source, target_class: int):
+    def _generate_cam(self, source, target_class: int, method="gradcam"):
         # source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
 
         ## We choose norm1 of the last block as the target layer for Grad-CAM, as it provides stronger gradients than norm2 or layer.norm in ViT-based MST.
@@ -113,7 +122,12 @@ class GradCAM_MST(BaseSaliencyMethod):
         grads = grads[0]
         acts, grads = self._remove_extra_tokens(acts, grads) # Remove CLS and extra tokens
 
-        cam = self._compute_cam(acts, grads)  # Compute CAM using manual method
+        if method == "gradcam":
+            cam = self._compute_cam(acts, grads)  # Compute CAM using manual method
+        elif method == "hires_cam":
+            cam = self._compute_hires_cam(acts, grads)  # Compute HiResCAM using manual method
+        else:
+            raise ValueError(f"Unsupported method: {method}")
 
         h_p = H // patch_size
         w_p = W // patch_size
@@ -139,8 +153,8 @@ class GradCAM_MST(BaseSaliencyMethod):
     # ----------------------------------
     # Main Entry
     # ----------------------------------
-    def generate(self, batch, target_class: int):
+    def generate(self, batch, target_class: int, method="gradcam"):
 
         source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
 
-        return self._generate_cam(source, target_class)
+        return self._generate_cam(source, target_class, method)
