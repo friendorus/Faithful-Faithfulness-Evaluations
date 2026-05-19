@@ -19,10 +19,14 @@ class GradCAM_MST(BaseSaliencyMethod):
     - Returns volumetric saliency [D, H, W]
     """
 
-    def __init__(self, model):
+    def __init__(
+            self, 
+            model,
+            cam_method: str = "gradcam", #gradcam or hires_cam
+            ):
         super().__init__(model)
         self.model.eval() # Set model to evaluation mode
-        
+        self.cam_method = cam_method
 
 
     # --------------------------------------------------
@@ -90,7 +94,7 @@ class GradCAM_MST(BaseSaliencyMethod):
         cam = torch.relu(cam)  
         return cam
 
-    def _generate_cam(self, source, target_class: int, method="gradcam"):
+    def _generate_cam(self, source, target_class: int):
         # source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
 
         ## We choose norm1 of the last block as the target layer for Grad-CAM, as it provides stronger gradients than norm2 or layer.norm in ViT-based MST.
@@ -122,12 +126,12 @@ class GradCAM_MST(BaseSaliencyMethod):
         grads = grads[0]
         acts, grads = self._remove_extra_tokens(acts, grads) # Remove CLS and extra tokens
 
-        if method == "gradcam":
+        if self.cam_method == "gradcam":
             cam = self._compute_cam(acts, grads)  # Compute CAM using manual method
-        elif method == "hires_cam":
+        elif self.cam_method == "hires_cam":
             cam = self._compute_hires_cam(acts, grads)  # Compute HiResCAM using manual method
         else:
-            raise ValueError(f"Unsupported method: {method}")
+            raise ValueError(f"Unsupported method: {self.cam_method}")
 
         h_p = H // patch_size
         w_p = W // patch_size
@@ -153,8 +157,8 @@ class GradCAM_MST(BaseSaliencyMethod):
     # ----------------------------------
     # Main Entry
     # ----------------------------------
-    def generate(self, batch, target_class: int, method="gradcam"):
+    def generate(self, batch, target_class: int):
 
         source = batch["source"].to(self.model.device)  # (B, C, D, H, W)
 
-        return self._generate_cam(source, target_class, method)
+        return self._generate_cam(source, target_class)

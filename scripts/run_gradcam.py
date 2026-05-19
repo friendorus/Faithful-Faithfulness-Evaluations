@@ -30,6 +30,7 @@ parser.add_argument('--run_folder', required=True, type=str)
 parser.add_argument("--checkpoint_name", default= None ,type=str, help="Path to the model checkpoint (file or directory)")
 parser.add_argument('--output_dir', default='./', type=str)
 parser.add_argument('--use_tta', action='store_true')
+parser.add_argument('--cam_method', default='gradcam', choices=['gradcam', 'hires_cam'], help="Method to compute CAM (standard Grad-CAM or HiResCAM)")
 parser.add_argument('--max_importance', type=int, default=-1,
                     help='-1 = all test samples')
 parser.add_argument('--max_images_per_class', type=int, default=5,
@@ -102,9 +103,10 @@ path_run = Path(args.run_dir) / run_folder/ args.checkpoint_name if args.checkpo
 results_folder = 'results_tta' if args.use_tta else 'results'
 path_out = Path(args.output_dir) / results_folder / run_folder / "saliency_results"
 path_out.mkdir(parents=True, exist_ok=True)
+cam_method = args.cam_method
 
 # Grad-CAM root
-gradcam_root = path_out / 'gradcam'
+gradcam_root = path_out / cam_method
 gradcam_root.mkdir(parents=True, exist_ok=True)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -124,7 +126,7 @@ model = load_model(
     device=device,
 )
 
-gradcam = GradCAM_MST(model, mode="hybrid") 
+gradcam = GradCAM_MST(model, cam_method=args.cam_method) 
 
 # ------------ Load dataset ----------------
 ds_test = get_dataset(dataset, split='test')
@@ -154,7 +156,7 @@ if args.only_images:
         selected_indices.extend(chosen)
 
     tqdm.write(
-        f"[Grad-CAM] Image-only mode: "
+        f"[{cam_method.upper()}] Image-only mode: "
         f"{len(selected_indices)} samples selected "
         f"({MAX_IMG} per class)"
     )
@@ -180,7 +182,7 @@ else:
 
 for idx in tqdm(
     selected_indices,
-    desc="Grad-CAM images" if args.only_images else "Grad-CAM importance",
+    desc=f"[{cam_method.upper()}] images" if args.only_images else f"[{cam_method.upper()}] importance",
     ncols=100):
 
     sample = ds_test[idx]
@@ -224,7 +226,7 @@ for idx in tqdm(
             'UID': uid,
             'dataset': dataset,
             'model': model_name,
-            'xai_method': 'gradcam',
+            'xai_method': cam_method,
             'class': gt,
             'mean_importance': float(sal_np.mean()),
             'max_importance': float(sal_np.max()),
@@ -287,7 +289,7 @@ for idx in tqdm(
 
         save_image(
             saliency[chosen_slice_index].unsqueeze(0),
-            image_dir / f"gradcam_{uid}.png",
+            image_dir / f"{cam_method}_{uid}.png",
             normalize=True
         )
 
@@ -312,6 +314,6 @@ for idx in tqdm(
 #Stop when test with only some amount of files
 df = pd.DataFrame(importance_rows)
 df.to_csv(
-    gradcam_root / 'gradcam_importance_summary.csv',
+    gradcam_root / f"{cam_method}_importance_summary.csv",
     index=False
 )

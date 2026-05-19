@@ -37,6 +37,7 @@ def parse_args():
     parser.add_argument("--use_tta", action="store_true")
 
     parser.add_argument("--mode", default="spatial", choices=['spatial', 'slice'])
+    parser.add_argument("--cam_method", default="gradcam", choices=['gradcam', 'hires_cam'], help="Method for Grad-CAM variant to use")
     parser.add_argument("--attention_method", default="last_layer", choices=['last_layer','slice_weighted_rollout'])
 
     # parser.add_argument("--max_importance", type=int, default=-1,
@@ -71,7 +72,7 @@ def setup_paths(args):
         xai_name = args.attention_method
         xai_root = path_out / xai_name
     elif args.xai_method == "gradcam":
-        xai_name = 'gradcam'
+        xai_name = args.cam_method
         xai_root = path_out / xai_name
     xai_root.mkdir(parents=True, exist_ok=True)
 
@@ -98,7 +99,8 @@ def load_model_unified(args, path_run, device):
 def build_xai(args, model):
     if args.xai_method == "gradcam":
         return GradCAM_MST(model,
-                           ), 'gradcam'
+                           cam_method=args.cam_method
+                           ), args.cam_method
 
     if args.xai_method == "attention":
         name = f"{args.attention_method}_{args.mode}"

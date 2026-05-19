@@ -113,6 +113,24 @@ python scripts/main_predict_eval.py \
 ```bash
 python scripts/run_xai.py \
   --xai_method gradcam \
+  --cam_method gradcam \
+  --run_folder DINOv3ViTB \
+  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA
+```
+
+```bash
+python scripts/run_xai.py \
+  --xai_method gradcam \
+  --cam_method hires_cam \
+  --run_folder DINOv3ViTB \
+  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA
+```
+
+```bash
+python scripts/run_xai.py \
+  --xai_method gradcam \
   --run_folder DINOv3ViTB \
   --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
   --dataset ODELIA
