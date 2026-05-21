@@ -19,9 +19,10 @@ BASELINES = [
 ]
 
 XAI_METHODS = [
-    "gradcam",
-    "last_layer",
-    "slice_weighted_rollout",
+    # "gradcam",
+    # "last_layer",
+    # "slice_weighted_rollout",
+    "hires_cam"
 ]
 
 COMMON_ARGS = [
