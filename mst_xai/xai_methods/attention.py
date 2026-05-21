@@ -48,7 +48,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         self.model.eval()  # Set model to evaluation mode
 
         assert mode in ["spatial", "slice"]
-        assert attention_method in ["last_layer", "slice_weighted_rollout"]
+        assert attention_method in ["last_layer", "slice_weighted_rollout", "grad_sam"]
 
         self.mode = mode
         self.resize_to_input = resize_to_input
@@ -115,12 +115,26 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # save_attn=True, which are later retrieved for explainability.
 
         # --------------------------------------------------
-        _ = self.model( 
+        # _ = self.model( 
+        #     source,
+        #     # src_key_padding_mask=src_key_padding_mask,
+        #     save_attn=True,
+        #     # use_softmax=True,
+        # )
+
+        source.requires_grad_(True) # Enable gradients
+        logits = self.model(
             source,
-            # src_key_padding_mask=src_key_padding_mask,
             save_attn=True,
-            # use_softmax=True,
         )
+
+        if target_class is None:
+            target_class = logits.argmax(dim=-1)
+
+        score = logits[:, target_class] # [B]
+
+        self.model.zero_grad()
+        score.backward(retain_graph=True) # Backpropagate to get gradients for attention-based methods
     
         # --------------------------------------------------
         # Retrieve attention from model
@@ -152,6 +166,11 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             rollout = self._attention_rollout(attn_maps, num_special = num_special)  # [B*D, N-1-4]
             slice_weights = attn_slice.squeeze(-1) # [B*D,1]
             cls_attn = slice_weights * rollout  # [32, 196]
+        elif self.attention_method == "grad_sam":
+            patch_attn_maps = self.model.attention_maps  # list of [B*D, Heads, Tokens, Tokens]
+            patch_cam = self._grad_sam(patch_attn_maps, num_special=num_special)  # [B*D, N-1-4]
+            slice_weights = attn_slice.squeeze(-1) # [B*D,1]
+            cls_attn = slice_weights * patch_cam  # [32, 196]
         else:
             raise ValueError(f"Unknown attention method: {self.attention_method}")
 
@@ -302,6 +321,26 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         rollout = rollout / rollout.sum(dim=-1, keepdim=True) # [B, N] Normalize final rollout
 
         return rollout
+    
+    def _grad_sam(self, patch_attn_maps, num_special):
+        patch_grads = [attn.grad for attn in patch_attn_maps]  # list of [B, Heads, N, N]
+        patch_cams = []
+
+        # Patch-level Grad-SAM
+        for attn, grad in zip(patch_attn_maps, patch_grads):
+            # [B*D, Heads, N, N]
+            cam = attn * torch.relu(grad)  # Element-wise product with ReLU of gradients
+            cam = cam.mean(dim=1)  # Average over heads → [B*D, N, N]
+            cam = cam[:, 0, 1+num_special:]
+            patch_cams.append(cam)
+
+        # aggregaite layers
+        patch_cams = torch.stack(patch_cams).mean(dim=0)  # Average over layers → [B*D, N-1-4]
+
+        # normalize
+        patch_cams = patch_cams / patch_cams.sum(dim=-1, keepdim=True)  # Normalize to make sum = 1
+        return patch_cams
+
 
     # --------------------------------------------------
     # Utils

@@ -157,6 +157,15 @@ python scripts/run_xai.py \
 ```bash
 python scripts/run_xai.py \
   --xai_method attention \
+  --attention_method grad_sam\
+  --run_folder DINOv3ViTB \
+  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA
+```
+
+```bash
+python scripts/run_xai.py \
+  --xai_method attention \
   --attention_method slice_weighted_rollout\
   --run_folder DINOv2ViTS \
   --checkpoint_name DinoV2ClassifierSlice_Final \

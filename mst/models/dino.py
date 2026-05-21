@@ -54,6 +54,8 @@ class DinoV2ClassifierSlice(BasicClassifier):
         self.save_attn = save_attn
         self.attention_maps = []
         self.attention_maps_slice = []
+        self.attention_grads = [] # collect gradients (for Grad-SAM)
+        self.attention_grads_slice = [] # collect gradients (for Grad-SAM)
         self.use_registers = use_registers
         self.slice_fusion_type = slice_fusion
         self.attn_mask = attn_mask
@@ -131,6 +133,8 @@ class DinoV2ClassifierSlice(BasicClassifier):
             torch.backends.mha.set_fastpath_enabled(False)
             self.attention_maps_slice = []
             self.attention_maps = []
+            self.attention_grads = [] # collect gradients (for Grad-SAM)
+            self.attention_grads_slice = [] # collect gradients (for Grad-SAM)
             self.hooks = []
             self.register_hooks()
         
@@ -263,6 +267,9 @@ class DinoV2ClassifierSlice(BasicClassifier):
                 x = self2.proj(x)
                 x = self2.proj_drop(x)
 
+                # keep gradients for Grad-SAM
+                attn.retain_grad()
+
                 # Hook attention map 
                 self.attention_maps.append(attn)
 
@@ -296,6 +303,9 @@ class DinoV2ClassifierSlice(BasicClassifier):
                 attn = self3.attn_drop(attn)
                 x = attn @ v
 
+                # keep gradients for Grad-SAM
+                attn.retain_grad()  
+
                 # Hook attention map 
                 self.attention_maps.append(attn)
 
@@ -306,7 +316,9 @@ class DinoV2ClassifierSlice(BasicClassifier):
 
 
         def append_attention_maps(module, input, output):
-            self.attention_maps_slice.append(output[1])
+            attn = output[1]
+            attn.retain_grad() # keep gradients for Grad-SAM
+            self.attention_maps_slice.append(attn)
 
         # Hook Dino Attention
         for name, mod in self.encoder.named_modules():

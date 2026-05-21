@@ -38,7 +38,7 @@ def parse_args():
 
     parser.add_argument("--mode", default="spatial", choices=['spatial', 'slice'])
     parser.add_argument("--cam_method", default="gradcam", choices=['gradcam', 'hires_cam'], help="Method for Grad-CAM variant to use")
-    parser.add_argument("--attention_method", default="last_layer", choices=['last_layer','slice_weighted_rollout'])
+    parser.add_argument("--attention_method", default="last_layer", choices=['last_layer','slice_weighted_rollout','grad_sam'])
 
     # parser.add_argument("--max_importance", type=int, default=-1,
     #                     help="Maximum number of input images to save importance scores(-1 for no limit)"
@@ -120,9 +120,15 @@ def generate_saliency(args, xai, model, batch):
     #     with torch.no_grad():
     #         pred = model(batch["source"]).argmax(dim=1).item()
         # return xai.generate(batch, target_class=pred), pred
-    with torch.no_grad():
+    if args.xai_method == "attention" and args.attention_method == "grad_sam":
+
+        # Grad-SAM requires gradients
         pred = model(batch["source"]).argmax(dim=1).item()
-    
+    else:
+        # other methods can stay inference-only
+        with torch.no_grad():
+            pred = model(batch["source"]).argmax(dim=1).item()
+
     saliency = xai.generate(batch, target_class=pred)
     return saliency, pred
 
