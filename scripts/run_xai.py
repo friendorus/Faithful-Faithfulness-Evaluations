@@ -116,20 +116,33 @@ def build_xai(args, model):
 # ============================================================
 
 def generate_saliency(args, xai, model, batch):
-    # if args.xai_method == "gradcam":
-    #     with torch.no_grad():
-    #         pred = model(batch["source"]).argmax(dim=1).item()
-        # return xai.generate(batch, target_class=pred), pred
+
     if args.xai_method == "attention" and args.attention_method == "grad_sam":
 
-        # Grad-SAM requires gradients
-        pred = model(batch["source"]).argmax(dim=1).item()
+        # Single forward pass with attention storage
+        logits = model(
+            batch["source"],
+            save_attn=True
+        )
+
+        pred = logits.argmax(dim=1).item()
+
+        saliency = xai.generate(
+            batch,
+            logits=logits,
+            target_class=pred
+        )
+
     else:
-        # other methods can stay inference-only
+
         with torch.no_grad():
             pred = model(batch["source"]).argmax(dim=1).item()
 
-    saliency = xai.generate(batch, target_class=pred)
+        saliency = xai.generate(
+            batch,
+            target_class=pred
+        )
+
     return saliency, pred
 
 

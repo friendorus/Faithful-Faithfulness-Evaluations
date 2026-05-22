@@ -95,7 +95,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
     # --------------------------------------------------
     # Core Attention Saliency
     # --------------------------------------------------
-    def generate(self, batch, target_class=None): 
+    def generate(self, batch, logits =None, target_class=None): 
         """
         Returns:
             spatial mode -> [D, H, W]
@@ -122,19 +122,19 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         #     # use_softmax=True,
         # )
 
-        source.requires_grad_(True) # Enable gradients
-        logits = self.model(
-            source,
-            save_attn=True,
-        )
-
         if target_class is None:
             target_class = logits.argmax(dim=-1)
 
-        score = logits[:, target_class] # [B]
+        score = logits[:, target_class]
+
+        for attn in self.model.attention_maps:
+            attn.retain_grad()
 
         self.model.zero_grad()
-        score.backward(retain_graph=True) # Backpropagate to get gradients for attention-based methods
+
+        score.backward()
+
+        torch.cuda.empty_cache()
     
         # --------------------------------------------------
         # Retrieve attention from model
@@ -167,7 +167,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             slice_weights = attn_slice.squeeze(-1) # [B*D,1]
             cls_attn = slice_weights * rollout  # [32, 196]
         elif self.attention_method == "grad_sam":
-            patch_attn_maps = self.model.attention_maps  # list of [B*D, Heads, Tokens, Tokens]
+            patch_attn_maps = self.model.attention_maps # list of [B*D, Heads, Tokens, Tokens]
             patch_cam = self._grad_sam(patch_attn_maps, num_special=num_special)  # [B*D, N-1-4]
             slice_weights = attn_slice.squeeze(-1) # [B*D,1]
             cls_attn = slice_weights * patch_cam  # [32, 196]
@@ -322,25 +322,38 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
 
         return rollout
     
-    def _grad_sam(self, patch_attn_maps, num_special):
-        patch_grads = [attn.grad for attn in patch_attn_maps]  # list of [B, Heads, N, N]
-        patch_cams = []
+    def _grad_sam(self, attn_maps, num_special):
 
-        # Patch-level Grad-SAM
-        for attn, grad in zip(patch_attn_maps, patch_grads):
-            # [B*D, Heads, N, N]
-            cam = attn * torch.relu(grad)  # Element-wise product with ReLU of gradients
-            cam = cam.mean(dim=1)  # Average over heads → [B*D, N, N]
-            cam = cam[:, 0, 1+num_special:]
-            patch_cams.append(cam)
+        cams = []
 
-        # aggregaite layers
-        patch_cams = torch.stack(patch_cams).mean(dim=0)  # Average over layers → [B*D, N-1-4]
+        for attn in attn_maps:
+
+            grad = attn.grad
+
+            if grad is None:
+                continue
+
+            # Grad-SAM
+            cam = attn * torch.relu(grad)
+
+            # aggregate heads
+            cam = cam.mean(dim=1)
+
+            # CLS -> patch tokens
+            cam = cam[:, 0, 1 + num_special:]
+
+            cams.append(cam)
+
+        if len(cams) == 0:
+            raise RuntimeError("No Grad-SAM gradients found.")
+
+        # aggregate layers
+        cam = torch.stack(cams).mean(dim=0)
 
         # normalize
-        patch_cams = patch_cams / patch_cams.sum(dim=-1, keepdim=True)  # Normalize to make sum = 1
-        return patch_cams
+        cam = cam / (cam.sum(dim=-1, keepdim=True) + 1e-8)
 
+        return cam
 
     # --------------------------------------------------
     # Utils
