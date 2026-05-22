@@ -32,7 +32,7 @@ parser.add_argument("--run_folder", required=True, type=str)
 parser.add_argument("--checkpoint_name", default=None, help= "Specific checkpoint file name (e.g., best.chkpt)")
 parser.add_argument("--output_dir", default="./", type=str)
 parser.add_argument("--mode", required=True, choices=["deletion", "insertion", "negative", "all"], help="Perturbation mode to run",)
-parser.add_argument("--xai_method", required=True, choices=["gradcam", "last_layer", "slice_weighted_rollout", "hires_cam"], help="XAI method to evaluate",)
+parser.add_argument("--xai_method", required=True, choices=["gradcam", "last_layer", "slice_weighted_rollout", "hires_cam","grad_sam"], help="XAI method to evaluate",)
 parser.add_argument("--steps", type=int, default=20)
 parser.add_argument("--max_samples", type=int, default=-1, help="-1 = all available saliency files")
 parser.add_argument("--replacement", default="minimum-intensity", choices=["minimum-intensity", "black-3", "black-5", "black-10", 

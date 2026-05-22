@@ -22,7 +22,8 @@ XAI_METHODS = [
     # "gradcam",
     # "last_layer",
     # "slice_weighted_rollout",
-    "hires_cam"
+    # "hires_cam",
+    "grad_sam"
 ]
 
 COMMON_ARGS = [
