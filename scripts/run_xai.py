@@ -156,7 +156,7 @@ def build_xai(args, model):
 
 def generate_saliency(args, xai, model, batch):
 
-    if args.xai_method == "attention" and args.attention_method == "grad_sam":
+    if args.xai_method == "attention": # and args.attention_method == "grad_sam":
 
         # Single forward pass with attention storage
         logits = model(

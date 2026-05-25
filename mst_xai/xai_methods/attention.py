@@ -1,18 +1,7 @@
 import torch
 import torch.nn.functional as F
-# import numpy as np
 
 from mst_xai.xai_methods.base import BaseSaliencyMethod
-
-# Import supported MST model architectures.
-# This XAI method is designed to work with both CNN-based (ResNet)
-# and Transformer-based (DINOv2) models that expose attention via
-# get_attention_maps() and/or get_slice_attention(). or create attention_rollout().
-# The imports define the intended scope of compatible models rather
-# than being used explicitly in this file.
-# from mst.models.resnet import ResNet, ResNetSliceTrans
-# from mst.models.dino import DinoV2ClassifierSlice
-
 
 class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch) or Attention Rollout_MST
     """
@@ -87,52 +76,24 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
     
         source = batch["source"].to(self.model.device)
 
-                
-        # src_key_padding_mask = batch.get("src_key_padding_mask", None)
-    
-        # --------------------------------------------------
-        # Forward pass (attention stored internally)
-            # This forces the model to store attention matrices internally
-            # Forward pass with attention recording enabled.
-            # The model is expected to internally store attention matrices when
-            # save_attn=True, which are later retrieved for explainability.
-
-        # # --------------------------------------------------
-        # _ = self.model( 
-        #     source,
-        #     # src_key_padding_mask=src_key_padding_mask,
-        #     save_attn=True,
-        #     # use_softmax=True,
-        # )
-    
-        # --------------------------------------------------
-        # Retrieve attention from model
-            # Retrieve attention from the model.
-            # - attn_spatial: patch-level self-attention (e.g. ViT encoder)
-            # - attn_slice: slice-level attention (e.g. slice fusion transformer)
-            # At least one of these must be implemented by the model.
-
-        # --------------------------------------------------
-        attn_slice = self.model.get_slice_attention()       # [32,1,1]
-        # attn_slice = attn_slice.squeeze(-1) # [32,1] - remove last dim
-
         #=---------------------------------------------
         # Attention Method Selection
         #---------------------------------------------
 
         if self.attention_method == "last_layer":
-            #Final layer attention (default)
-
             attn_spatial = self.model.attention_maps[-1]   # [32, 12, 201, 201] [B*D, Heads, Tokens, Tokens] - take last layer attention
             attn_spatial = attn_spatial[:,:, 0, 1+self.num_special:] # CLS token attend to all tokens (remove extra tokens) # [B, num_heads, 1 , N-1-4]
             attn_spatial /= attn_spatial.sum(dim=-1, keepdim=True) # Normalize to make sum = 1 [B*D, Heads, N-1-4]
+            
+            attn_slice = self.model.get_slice_attention()       # [32,1,1]
             cls_attn = attn_slice * attn_spatial # [B*D, Heads, N-1-4]
             cls_attn = cls_attn.mean(dim=1)  # Average over heads → [B*D, N-1-4] [32, 196]
             
         elif self.attention_method == "slice_weighted_rollout":
-            # Slice-weighted attention rollout
             attn_maps = self.model.attention_maps  # list of [B*D, Heads, Tokens, Tokens]
             rollout = self._attention_rollout(attn_maps, num_special = self.num_special)  # [B*D, N-1-4]
+            
+            attn_slice = self.model.get_slice_attention()       # [32,1,1]
             slice_weights = attn_slice.squeeze(-1) # [B*D,1]
             cls_attn = slice_weights * rollout  # [32, 196]
         elif self.attention_method == "grad_sam":
@@ -146,6 +107,8 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
 
             patch_attn_maps = self.model.attention_maps # list of [B*D, Heads, Tokens, Tokens]
             patch_cam = self._grad_sam(patch_attn_maps, num_special=self.num_special)  # [B*D, N-1-4]
+            
+            attn_slice = self.model.get_slice_attention()       # [32,1,1]
             slice_weights = attn_slice.squeeze(-1) # [B*D,1]
             cls_attn = slice_weights * patch_cam  # [32, 196]
         else:
@@ -199,65 +162,6 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         sal = sal / (sal.max() - sal.min() + 1e-8)
     
         return sal.detach()
-
-
-    # # --------------------------------------------------
-    # # Visualization (same philosophy as GradCAM_MST)
-    # # --------------------------------------------------
-    # def visualize(
-    #     self,
-    #     image: torch.Tensor,
-    #     saliency: torch.Tensor,
-    #     alpha: float = 0.5,
-    #     slice_idx: int | None = None,
-    # ):
-    #     """
-    #     Args:
-    #         image: [1, D, H, W]
-    #         saliency:
-    #             spatial → [D, H, W]
-    #             slice   → [D]
-
-    #     Returns:
-    #         overlay (numpy)
-    #     """
-
-    #     img = image.squeeze().detach().cpu().numpy()
-    #     sal = saliency.detach().cpu().numpy()
-
-    #     if self.mode == "slice":
-    #         if slice_idx is None:
-    #             slice_idx = sal.argmax()
-    #         return sal, slice_idx
-
-    #     # spatial mode
-    #     if slice_idx is None:
-    #         slice_scores = sal.reshape(sal.shape[0], -1).sum(axis=1)
-    #         slice_idx = slice_scores.argmax()
-
-    #     img_slice = img[slice_idx]
-    #     sal_slice = sal[slice_idx]
-
-    #     sal_slice = (sal_slice - sal_slice.min()) / (sal_slice.max() + 1e-8)
-
-    #     overlay = (1 - alpha) * img_slice + alpha * sal_slice
-    #     overlay = np.clip(overlay, 0, 1)
-
-    #     return overlay
-    
-    # def _attention_rollout(self, attn_maps):
-    #     rollout = None
-    #     for attn in attn_maps:
-    #         # attn: [B, Heads, Tokens, Tokens]
-    #         attn = attn.mean(dim=1)
-    #         # Add residual connection
-    #         I = torch.eye(attn.size(-1), device=attn.device)
-    #         attn = attn + I
-    #         # Normalize
-    #         attn = attn / attn.sum(dim=-1, keepdim=True)
-    #         rollout = attn if rollout is None else attn @ rollout
-    #     return rollout[:, 0, 1:]  # CLS → patch attention # [B, HW]
-
 
     def _attention_rollout(self, attn_maps, num_special):
 
