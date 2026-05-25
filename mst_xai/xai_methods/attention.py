@@ -114,27 +114,13 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # The model is expected to internally store attention matrices when
             # save_attn=True, which are later retrieved for explainability.
 
-        # --------------------------------------------------
+        # # --------------------------------------------------
         # _ = self.model( 
         #     source,
         #     # src_key_padding_mask=src_key_padding_mask,
         #     save_attn=True,
         #     # use_softmax=True,
         # )
-
-        if target_class is None:
-            target_class = logits.argmax(dim=-1)
-
-        score = logits[:, target_class]
-
-        for attn in self.model.attention_maps:
-            attn.retain_grad()
-
-        self.model.zero_grad()
-
-        score.backward()
-
-        torch.cuda.empty_cache()
     
         # --------------------------------------------------
         # Retrieve attention from model
@@ -167,6 +153,14 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             slice_weights = attn_slice.squeeze(-1) # [B*D,1]
             cls_attn = slice_weights * rollout  # [32, 196]
         elif self.attention_method == "grad_sam":
+            if target_class is None:
+                target_class = logits.argmax(dim=-1)
+            score = logits[:, target_class]
+            for attn in self.model.attention_maps:
+                attn.retain_grad()
+            self.model.zero_grad() # clear all gradient before backward pass
+            score.backward()
+
             patch_attn_maps = self.model.attention_maps # list of [B*D, Heads, Tokens, Tokens]
             patch_cam = self._grad_sam(patch_attn_maps, num_special=num_special)  # [B*D, N-1-4]
             slice_weights = attn_slice.squeeze(-1) # [B*D,1]
@@ -323,25 +317,17 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         return rollout
     
     def _grad_sam(self, attn_maps, num_special):
-
         cams = []
-
         for attn in attn_maps:
-
             grad = attn.grad
-
             if grad is None:
                 continue
-
             # Grad-SAM
             cam = attn * torch.relu(grad)
-
             # aggregate heads
             cam = cam.mean(dim=1)
-
             # CLS -> patch tokens
             cam = cam[:, 0, 1 + num_special:]
-
             cams.append(cam)
 
         if len(cams) == 0:
