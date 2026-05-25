@@ -53,45 +53,28 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         self.mode = mode
         self.resize_to_input = resize_to_input
         self.attention_method = attention_method
+        self.num_special = self._detect_num_special_tokens()
 
-    # # --------------------------------------------------
-    # # Detect number of extra tokens (CLS + register/storage)
-    # # --------------------------------------------------
-    # def _get_num_extra_tokens(self, source):
-    #     """
-    #     This method detects how many extra tokens (beyond the CLS token) are present in the ViT encoder's output.        
-    #     # Remove CLS + extra tokens (we only want patch tokens for spatial saliency)
-    #     # ViT tokes = [CLS] + [extra tokens] + [patch tokens]
-    #     # For DinoV2, there are possible to have only 1 CLS toke or extra register tokens,
-    #     # For DinoV3, there are possible to have 1 CLS token + 4 storage tokens
-    #     """
-    #     if hasattr(self, "num_extra_tokens"):
-    #         return self.num_extra_tokens
+    def _detect_num_special_tokens(self):
+        if hasattr(self, "num_special"):
+            return self.num_special
 
-    #     # No gradient needed -> just inspect model structure to determine how many extra tokens there are (e.g., CLS + storage tokens)
-    #     with torch.no_grad():
-    #         # Take one slice for probing
-    #         x_enc = source[:1]              # (1,1,D,H,W)
-    #         x_enc = x_enc[:, :, 0]          # take one slice → (1,1,H,W)
-    #         # Convert to 3-channel by repeating the single channel (ViT requires 3-channel input) → (1,3,H,W)
-    #         x_enc = x_enc.repeat(1, 3, 1, 1)  # → (1,3,H,W)
+        device = self.model.device
+        with torch.no_grad():
+            dummy = torch.zeros(
+                1, 3, 224, 224,
+                device=device
+            )
+            out = self.model.encoder.forward_features(dummy)
 
-    #         # Get token structure
-    #         out = self.model.encoder.forward_features(x_enc)
+        if "x_storage_tokens" in out: # DinoV3 (CLS + storage tokens
+            self.num_special = out["x_storage_tokens"].shape[1]
+        elif "x_norm_regtokens" in out: # DinoV2 (CLS + reg tokens)
+            self.num_special = out["x_norm_regtokens"].shape[1]
+        else:
+            self.num_special = 0
 
-    #     # Detect exttra tokens based on the output of the encoder's forward_features method.
-    #     # If new models have different token structures, this logic may need to be updated.
-    #     if "x_storage_tokens" in out:
-    #         # DinoV3 (CLS + storage tokens)
-    #         self.num_extra_tokens = out["x_storage_tokens"].shape[1] 
-    #     elif "x_norm_regtokens" in out:
-    #         # DinoV2 (CLS + normalized register tokens)
-    #         self.num_extra_tokens = out["x_norm_regtokens"].shape[1]
-    #     else:
-    #         # Default to 0 if no extra tokens are detected (only CLS token)
-    #         self.num_extra_tokens = 0
-
-    #     return self.num_extra_tokens
+        return self.num_special
     # --------------------------------------------------
     # Core Attention Saliency
     # --------------------------------------------------
@@ -103,7 +86,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         """
     
         source = batch["source"].to(self.model.device)
-        num_special = 4 # Storage tokens in DINOv3 (not include CLS token)
+
                 
         # src_key_padding_mask = batch.get("src_key_padding_mask", None)
     
@@ -141,7 +124,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             #Final layer attention (default)
 
             attn_spatial = self.model.attention_maps[-1]   # [32, 12, 201, 201] [B*D, Heads, Tokens, Tokens] - take last layer attention
-            attn_spatial = attn_spatial[:,:, 0, 1+num_special:] # CLS token attend to all tokens (remove extra tokens) # [B, num_heads, 1 , N-1-4]
+            attn_spatial = attn_spatial[:,:, 0, 1+self.num_special:] # CLS token attend to all tokens (remove extra tokens) # [B, num_heads, 1 , N-1-4]
             attn_spatial /= attn_spatial.sum(dim=-1, keepdim=True) # Normalize to make sum = 1 [B*D, Heads, N-1-4]
             cls_attn = attn_slice * attn_spatial # [B*D, Heads, N-1-4]
             cls_attn = cls_attn.mean(dim=1)  # Average over heads → [B*D, N-1-4] [32, 196]
@@ -149,7 +132,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         elif self.attention_method == "slice_weighted_rollout":
             # Slice-weighted attention rollout
             attn_maps = self.model.attention_maps  # list of [B*D, Heads, Tokens, Tokens]
-            rollout = self._attention_rollout(attn_maps, num_special = num_special)  # [B*D, N-1-4]
+            rollout = self._attention_rollout(attn_maps, num_special = self.num_special)  # [B*D, N-1-4]
             slice_weights = attn_slice.squeeze(-1) # [B*D,1]
             cls_attn = slice_weights * rollout  # [32, 196]
         elif self.attention_method == "grad_sam":
@@ -157,12 +140,12 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
                 target_class = logits.argmax(dim=-1)
             score = logits[:, target_class]
             for attn in self.model.attention_maps:
-                attn.retain_grad()
+                attn.retain_grad() # command to retain gradients for every transformer layer
             self.model.zero_grad() # clear all gradient before backward pass
             score.backward()
 
             patch_attn_maps = self.model.attention_maps # list of [B*D, Heads, Tokens, Tokens]
-            patch_cam = self._grad_sam(patch_attn_maps, num_special=num_special)  # [B*D, N-1-4]
+            patch_cam = self._grad_sam(patch_attn_maps, num_special=self.num_special)  # [B*D, N-1-4]
             slice_weights = attn_slice.squeeze(-1) # [B*D,1]
             cls_attn = slice_weights * patch_cam  # [32, 196]
         else:

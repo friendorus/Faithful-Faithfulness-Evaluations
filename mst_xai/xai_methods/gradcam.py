@@ -28,7 +28,28 @@ class GradCAM_MST(BaseSaliencyMethod):
         self.model.eval() # Set model to evaluation mode
         self.cam_method = cam_method
 
+        self.num_special = self._detect_num_special_tokens()
 
+    def _detect_num_special_tokens(self):
+        if hasattr(self, "num_special"):
+            return self.num_special
+
+        device = self.model.device
+        with torch.no_grad():
+            dummy = torch.zeros(
+                1, 3, 224, 224,
+                device=device
+            )
+            out = self.model.encoder.forward_features(dummy)
+
+        if "x_storage_tokens" in out: # DinoV3 (CLS + storage tokens
+            self.num_special = out["x_storage_tokens"].shape[1]
+        elif "x_norm_regtokens" in out: # DinoV2 (CLS + reg tokens)
+            self.num_special = out["x_norm_regtokens"].shape[1]
+        else:
+            self.num_special = 0
+
+        return self.num_special
     # --------------------------------------------------
     # Detect number of extra tokens (CLS + register/storage)
     # # --------------------------------------------------
@@ -69,7 +90,7 @@ class GradCAM_MST(BaseSaliencyMethod):
     #     return self.num_extra_tokens
     
     def _remove_extra_tokens(self, acts, grads):
-        num_extra_tokens = 4 # For DINOv3, there are 4 storage tokens in addition to the CLS token. For DINOv2, there are normalized register tokens. Adjust as needed for different models.
+        num_extra_tokens = self.num_special # For DINOv3, there are 4 storage tokens in addition to the CLS token. For DINOv2, there are normalized register tokens. Adjust as needed for different models.
         # Remove CLS and extra tokens from activations and gradients to focus on patch tokens
         acts = acts[:, 1 + num_extra_tokens:, :] # 1+num_extra_tokens to skip CLS and extra tokens
         grads = grads[:, 1 + num_extra_tokens:, :]
