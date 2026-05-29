@@ -22,11 +22,13 @@ class GradCAM_MST(BaseSaliencyMethod):
     def __init__(
             self, 
             model,
-            cam_method: str = "gradcam", #gradcam or hires_cam
+            cam_method: str = "gradcam", #gradcam or hires_cam,
+            relu: bool = True
             ):
         super().__init__(model)
         self.model.eval() # Set model to evaluation mode
         self.cam_method = cam_method
+        self.relu = relu
 
         self.num_special = self._detect_num_special_tokens()
 
@@ -103,7 +105,8 @@ class GradCAM_MST(BaseSaliencyMethod):
         weights = grads.mean(dim=(0, 1)) # (C,) # Global average pooling of gradients across slices and tokens
         weights = weights.unsqueeze(0).unsqueeze(1)  # (B*D, 1, C) # Reshape for broadcasting to activations
         cam = (acts * weights).sum(dim=2)  # (B*D, N) # Linear combination of activations weighted by importance scores (gradients)
-        cam = torch.relu(cam)  
+        if self.relu:
+            cam = torch.relu(cam)
         return cam
     
     # --------------------------------------------------
@@ -112,8 +115,11 @@ class GradCAM_MST(BaseSaliencyMethod):
     def _compute_hires_cam(self, acts, grads):
         # HiResCAM method: element-wise product of activations and gradients, then sum over channels
         cam = (acts * grads).sum(dim=2)  # (B*D, N) # Element-wise product followed by summation over channels
-        cam = torch.relu(cam)  
+        if self.relu:
+            cam = torch.relu(cam)
         return cam
+
+    # -------------------------------------------------    
 
     def _generate_cam(self, source, target_class: int):
         # source = batch["source"].to(self.model.device)  # (B, C, D, H, W)

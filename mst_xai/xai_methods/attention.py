@@ -210,23 +210,23 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             if grad is None:
                 continue
             # Grad-SAM
-            cam = attn * torch.relu(grad)
+            cam = attn * torch.relu(grad) # [32, 12, 201, 201]
             # aggregate heads
-            cam = cam.mean(dim=1)
+            cam = cam.mean(dim=1) # [32, 201, 201]
             # CLS -> patch tokens
-            cam = cam[:, 0, 1 + num_special:]
+            cam = cam[:, 0, 1 + num_special:] # [32, 196]
             cams.append(cam)
 
         if len(cams) == 0:
             raise RuntimeError("No Grad-SAM gradients found.")
 
         # aggregate layers
-        cam = torch.stack(cams).mean(dim=0)
+        cam = torch.stack(cams).mean(dim=0) # [12, 32, 196] -> [32, 196]
 
         # normalize
-        cam = cam / (cam.sum(dim=-1, keepdim=True) + 1e-8)
+        cam = cam / (cam.sum(dim=-1, keepdim=True) + 1e-8) 
 
-        return cam
+        return cam 
 
     # --------------------------------------------------
     # Utils
