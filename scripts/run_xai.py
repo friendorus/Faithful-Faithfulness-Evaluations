@@ -27,7 +27,7 @@ def parse_args():
 
     parser.add_argument("--dataset", default="ODELIA")
     parser.add_argument("--model_name", default="DinoV2ClassifierSlice")
-    parser.add_argument("--xai_method", choices=["gradcam", "attention"], required=True)
+    parser.add_argument("--xai_method", choices=["gradcam", "attention","random"], required=True)
 
     parser.add_argument("--run_dir", default="./runs")
     parser.add_argument("--run_folder", required=True)
@@ -40,17 +40,6 @@ def parse_args():
     parser.add_argument("--cam_method", default="gradcam", choices=['gradcam', 'hires_cam'], help="Method for Grad-CAM variant to use")
     parser.add_argument("--norelu", action="store_true", help="Whether to skip ReLU in Grad-CAM (i.e., allow negative importance scores)")
     parser.add_argument("--attention_method", default="last_layer", choices=['last_layer','slice_weighted_rollout','grad_sam'])
-
-    # parser.add_argument("--max_importance", type=int, default=-1,
-    #                     help="Maximum number of input images to save importance scores(-1 for no limit)"
-    #                     )
-    # parser.add_argument("--max_images_per_class", type=int, default=5,
-    #                     help="Maximum number of images to save per class"
-    #                     )
-    # parser.add_argument("--slice_choosen", default="squared_sum", 
-    #                     choices=['mid', 'highest_mean', 'highest_max', 'top-K_mean', 'squared_sum'],
-    #                     help="Method to select the slice for visualization when mode is spatial"
-    #                     )
 
     return parser.parse_args()
 
@@ -75,6 +64,9 @@ def setup_paths(args):
     elif args.xai_method == "gradcam":
         xai_name = args.cam_method + ("_no_relu" if args.norelu else "")
         xai_root = path_out / xai_name
+    elif args.xai_method == "random":
+        xai_name = "random"
+        xai_root = path_out / xai_name
     xai_root.mkdir(parents=True, exist_ok=True)
 
     return path_run, xai_root, xai_name
@@ -94,9 +86,6 @@ def load_model_unified(args, path_run, device):
     )
     return model.to(device).eval()
 
-
-
-
 def build_xai(args, model):
     if args.xai_method == "gradcam":
         name = f"{args.cam_method if not args.norelu else f'{args.cam_method}_no_relu'}"
@@ -113,45 +102,6 @@ def build_xai(args, model):
             attention_method=args.attention_method
         ), name
 
-# # --------------------------------------------------
-# # Detect number of extra tokens (CLS + register/storage)
-# # --------------------------------------------------
-# def _get_num_extra_tokens(self, source):
-#     """
-#     This method detects how many extra tokens (beyond the CLS token) are present in the ViT encoder's output.        
-#     # Remove CLS + extra tokens (we only want patch tokens for spatial saliency)
-#     # ViT tokes = [CLS] + [extra tokens] + [patch tokens]
-#     # For DinoV2, there are possible to have only 1 CLS toke or extra register tokens,
-#     # For DinoV3, there are possible to have 1 CLS token + 4 storage tokens
-#     """
-#     if hasattr(self, "num_extra_tokens"):
-#         return self.num_extra_tokens
-
-#     # No gradient needed -> just inspect model structure to determine how many extra tokens there are (e.g., CLS + storage tokens)
-#     with torch.no_grad():
-#         # Take one slice for probing
-#         x_enc = source[:1]              # (1,1,D,H,W)
-#         x_enc = x_enc[:, :, 0]          # take one slice → (1,1,H,W)
-#         # Convert to 3-channel by repeating the single channel (ViT requires 3-channel input) → (1,3,H,W)
-#         x_enc = x_enc.repeat(1, 3, 1, 1)  # → (1,3,H,W)
-
-#         # Get token structure
-#         out = self.model.encoder.forward_features(x_enc)
-
-#     # Detect exttra tokens based on the output of the encoder's forward_features method.
-#     # If new models have different token structures, this logic may need to be updated.
-#     if "x_storage_tokens" in out:
-#         # DinoV3 (CLS + storage tokens)
-#         self.num_extra_tokens = out["x_storage_tokens"].shape[1] 
-#     elif "x_norm_regtokens" in out:
-#         # DinoV2 (CLS + normalized register tokens)
-#         self.num_extra_tokens = out["x_norm_regtokens"].shape[1]
-#     else:
-#         # Default to 0 if no extra tokens are detected (only CLS token)
-#         self.num_extra_tokens = 0
-
-#     return self.num_extra_tokens
-
 
 # ============================================================
 # CORE FUNCTIONS
@@ -159,7 +109,22 @@ def build_xai(args, model):
 
 def generate_saliency(args, xai, model, batch):
 
-    if args.xai_method == "attention": # and args.attention_method == "grad_sam":
+    if args.xai_method == "random":
+
+        with torch.no_grad():
+            logits = model(batch["source"])
+            pred = logits.argmax(dim=1).item()
+
+        _, _, D, H, W = batch["source"].shape
+        saliency = torch.rand(
+            D, H, W,
+            device=batch["source"].device
+        )
+
+        saliency = (saliency - saliency.min()) / (saliency.max() - saliency.min() + 1e-8)
+
+
+    elif args.xai_method == "attention": 
 
         # Single forward pass with attention storage
         logits = model(
@@ -175,10 +140,11 @@ def generate_saliency(args, xai, model, batch):
             target_class=pred,
         )
 
-    else:
+    else: # Grad-CAM and variants
 
         with torch.no_grad():
-            pred = model(batch["source"]).argmax(dim=1).item()
+            logits = model(batch["source"])
+            pred = logits.argmax(dim=1).item()
 
         saliency = xai.generate(
             batch,
@@ -187,107 +153,6 @@ def generate_saliency(args, xai, model, batch):
 
     return saliency, pred
 
-
-# def select_indices(labels, args):
-#     # if not args.only_images:
-#     #     return list(range(len(labels)))
-
-#     random.seed(42)
-#     indices_by_class = defaultdict(list)
-
-#     for i, gt in enumerate(labels):
-#         indices_by_class[int(gt)].append(i)
-
-#     selected = []
-#     for idxs in indices_by_class.values():
-#         selected.extend(random.sample(idxs, k=min(len(idxs), args.max_images_per_class)))
-
-#     return selected
-
-
-# def select_slice(saliency, method):
-#     if method == "mid":
-#         return saliency.shape[0] // 2
-
-#     if method == "highest_mean":
-#         return saliency.mean(dim=(1, 2)).argmax().item()
-
-#     if method == "highest_max":
-#         return saliency.amax(dim=(1, 2)).argmax().item()
-
-#     if method == "top-K_mean":
-#         scores = [torch.topk(saliency[d].flatten(), 100).values.mean()
-#                   for d in range(saliency.shape[0])]
-#         return torch.stack(scores).argmax().item()
-
-#     if method == "squared_sum":
-#         return (saliency ** 2).sum(dim=(1, 2)).argmax().item()
-
-#     raise ValueError("Invalid slice selection")
-
-
-# ============================================================
-# VISUALIZATION
-# ============================================================
-
-# def overlay_heatmap(image, saliency, alpha=0.5):
-#     """
-#     image: 2D numpy array (H, W), normalized [0,1]
-#     saliency: 2D numpy array (H, W), normalized [0,1]
-#     """
-#     image_uint8 = np.uint8(255 * image)
-#     heatmap_uint8 = np.uint8(255 * saliency)
-
-#     heatmap_color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
-#     heatmap_color = cv2.cvtColor(heatmap_color, cv2.COLOR_BGR2RGB)
-
-#     overlay = cv2.addWeighted(
-#         heatmap_color,
-#         alpha,
-#         np.stack([image_uint8]*3, axis=-1),
-#         1 - alpha,
-#         0
-#     )
-
-#     return overlay
-
-# def concat_input_overlay(input_2d, overlay_rgb):
-#     """
-#     input_2d: (H, W) normalized [0,1]
-#     overlay_rgb: (H, W, 3) uint8 or float [0,255]
-#     """
-#     # convert input to RGB
-#     input_uint8 = np.uint8(255 * input_2d)
-#     input_rgb = np.stack([input_uint8]*3, axis=-1)
-
-#     # ensure same dtype
-#     if overlay_rgb.dtype != np.uint8:
-#         overlay_rgb = np.uint8(overlay_rgb)
-
-#     # concatenate horizontally
-#     combined = np.concatenate([input_rgb, overlay_rgb], axis=1)
-#     return combined
-
-
-# def save_images(batch, saliency, uid, method_name, args, image_dir):
-#     img = batch["source"].squeeze(0).squeeze(0).cpu().numpy()
-#     img = (img - img.min()) / (img.max() - img.min() + 1e-8)  # Normalize to [0,1]
-#     idx = select_slice(saliency, args.slice_choosen)
-
-#     img = img[idx]
-#     sal = saliency[idx].detach().cpu().numpy()
-
-#     overlay = overlay_heatmap(img, sal)
-#     combined = concat_input_overlay(img, overlay)
-
-#     save_image(batch["source"][0, 0, idx].detach().cpu(),
-#                image_dir / f"original_{uid}.png", normalize=True)
-
-#     save_image(saliency[idx].detach().cpu().unsqueeze(0),
-#                image_dir / f"{method_name}_{uid}.png", normalize=True)
-
-#     plt.imsave(image_dir / f"overlay_{uid}.png", overlay)
-#     plt.imsave(image_dir / f"compare_{uid}.png", combined)
 
 
 # ============================================================
@@ -301,7 +166,12 @@ def run_pipeline(args):
     path_run, xai_root, xai_name = setup_paths(args)
 
     model = load_model_unified(args, path_run, device)
-    xai, method_name = build_xai(args, model)
+
+    if args.xai_method == "random":
+        xai = None
+        method_name = "random"
+    else:
+        xai, method_name = build_xai(args, model)
 
     ds = load_dataset(args.dataset)
     labels = ds.df[ds.LABEL].values
