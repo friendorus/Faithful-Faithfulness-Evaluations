@@ -38,7 +38,7 @@ def parse_args():
 
     parser.add_argument("--mode", default="spatial", choices=['spatial', 'slice'])
     parser.add_argument("--cam_method", default="gradcam", choices=['gradcam', 'hires_cam'], help="Method for Grad-CAM variant to use")
-    parser.add_argument("--relu", action="store_true", help="Whether to apply ReLU to the final saliency map (common in Grad-CAM)")
+    parser.add_argument("--norelu", action="store_true", help="Whether to skip ReLU in Grad-CAM (i.e., allow negative importance scores)")
     parser.add_argument("--attention_method", default="last_layer", choices=['last_layer','slice_weighted_rollout','grad_sam'])
 
     # parser.add_argument("--max_importance", type=int, default=-1,
@@ -73,7 +73,7 @@ def setup_paths(args):
         xai_name = args.attention_method
         xai_root = path_out / xai_name
     elif args.xai_method == "gradcam":
-        xai_name = args.cam_method
+        xai_name = args.cam_method + ("_no_relu" if args.norelu else "")
         xai_root = path_out / xai_name
     xai_root.mkdir(parents=True, exist_ok=True)
 
@@ -99,10 +99,10 @@ def load_model_unified(args, path_run, device):
 
 def build_xai(args, model):
     if args.xai_method == "gradcam":
-        name = f"{args.cam_method if args.relu else f'{args.cam_method}_no_relu'}"
+        name = f"{args.cam_method if not args.norelu else f'{args.cam_method}_no_relu'}"
         return GradCAM_MST(model,
                            cam_method=args.cam_method,
-                           relu=args.relu
+                           relu=not args.norelu
                            ), name
 
     if args.xai_method == "attention":

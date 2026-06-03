@@ -107,14 +107,15 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
 
             patch_attn_maps = self.model.attention_maps # list of [B*D, Heads, Tokens, Tokens]
             patch_cam = self._grad_sam(patch_attn_maps, num_special=self.num_special)  # [B*D, N-1-4]
-            
-            attn_slice = self.model.get_slice_attention()       # [32,1,1]
-            slice_weights = attn_slice.squeeze(-1) # [B*D,1]
-            cls_attn = slice_weights * patch_cam  # [32, 196]
+                        
+            # attn_slice = self.model.get_slice_attention()       # [32,1,1]
+            # slice_weights = attn_slice.squeeze(-1) # [B*D,1]
+            # cls_attn = slice_weights * patch_cam  # [32, 196]
+
+            cls_attn = patch_cam
         else:
             raise ValueError(f"Unknown attention method: {self.attention_method}")
 
-    
         if cls_attn is None and attn_slice is None:
             raise RuntimeError("No attention maps found. Did you pass save_attn=True?")
     
@@ -213,17 +214,21 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             cam = attn * torch.relu(grad) # [32, 12, 201, 201]
             # aggregate heads
             cam = cam.mean(dim=1) # [32, 201, 201]
-            # CLS -> patch tokens
-            cam = cam[:, 0, 1 + num_special:] # [32, 196]
+            # aggregrate on j dimension (tokens attended to)
+            cam = cam.mean(dim=-1) # [32, 201] 
+
             cams.append(cam)
 
         if len(cams) == 0:
             raise RuntimeError("No Grad-SAM gradients found.")
 
         # aggregate layers
-        cam = torch.stack(cams).mean(dim=0) # [12, 32, 196] -> [32, 196]
+        cam = torch.stack(cams).mean(dim=0) # [12, 32, 201] -> [32, 201]
 
-        # normalize
+        # remove special tokens (CLS + extra tokens)
+        cam = cam[:, 1 + num_special:] # [32, 196]
+
+        # # normalize
         cam = cam / (cam.sum(dim=-1, keepdim=True) + 1e-8) 
 
         return cam 

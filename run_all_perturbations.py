@@ -6,15 +6,15 @@ RUN_FOLDER = "DINOv3ViTB"
 CHECKPOINT = "challenge_mstv3-vit_sch_CB_sub2_best.chkpt"  # specify the checkpoint to evaluate
 
 BASELINES = [
-    "minimum-intensity",
+    # "minimum-intensity",
     # "black-3",
-    "black-5",
+    # "black-5",
     # "black-10",
-    "white-5",
+    # "white-5",
     # "white-10",
     # "zero",
     # "mean",
-    "gaussian_blur",
+    # "gaussian_blur",
     "attention_mask",
 ]
 
@@ -23,7 +23,9 @@ XAI_METHODS = [
     # "last_layer",
     # "slice_weighted_rollout",
     # "hires_cam",
-    "grad_sam"
+    "grad_sam",
+    # "gradcam_no_relu",
+    # "hires_cam_no_relu"
 ]
 
 COMMON_ARGS = [
