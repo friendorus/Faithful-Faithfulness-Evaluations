@@ -116,12 +116,28 @@ def generate_saliency(args, xai, model, batch):
             logits = model(batch["source"])
             pred = logits.argmax(dim=1).item()
 
-        _, _, D, H, W = batch["source"].shape
-        saliency = torch.rand(
-            D, H, W,
-            device=batch["source"].device
-        )
+            _, _, D, H, W = batch["source"].shape
 
+            # DINOv3 patch size
+            patch_size = 16
+
+            H_p = H // patch_size
+            W_p = W // patch_size
+
+            # Random importance per patch
+            patch_sal = torch.rand(
+                D,
+                H_p,
+                W_p,
+                device=batch["source"].device
+            )
+
+            # Upsample back to image resolution
+            saliency = torch.nn.functional.interpolate(
+                patch_sal.unsqueeze(0).unsqueeze(0),
+                size=(D, H, W),
+                mode="nearest"
+            )[0, 0]
         saliency = (saliency - saliency.min()) / (saliency.max() - saliency.min() + 1e-8)
 
 
