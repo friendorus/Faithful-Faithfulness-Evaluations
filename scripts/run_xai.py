@@ -37,7 +37,8 @@ def parse_args():
     parser.add_argument("--use_tta", action="store_true")
 
     parser.add_argument("--mode", default="spatial", choices=['spatial', 'slice'])
-    parser.add_argument("--cam_method", default="gradcam", choices=['gradcam', 'hires_cam'], help="Method for Grad-CAM variant to use")
+    parser.add_argument("--cam_method", default="gradcam", 
+                        choices=['gradcam', 'hires_cam','nonclass_gradcam','nonclass_hires_cam'], help="Method for Grad-CAM variant to use")
     parser.add_argument("--norelu", action="store_true", help="Whether to skip ReLU in Grad-CAM (i.e., allow negative importance scores)")
     parser.add_argument("--attention_method", default="last_layer", choices=['last_layer','slice_weighted_rollout','grad_sam'])
 

@@ -110,6 +110,8 @@ python scripts/main_predict_eval.py \
 
 # Run XAI method
 
+GradCAM (original)
+
 ```bash
 python scripts/run_xai.py \
   --xai_method gradcam \
@@ -119,6 +121,30 @@ python scripts/run_xai.py \
   --dataset ODELIA
 ```
 
+GradCAM No ReLU
+
+```bash
+python scripts/run_xai.py \
+  --xai_method gradcam \
+  --cam_method gradcam \
+  --norelu \
+  --run_folder DINOv3ViTB \
+  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA
+```
+
+GradCAM - NON-Class specific
+
+```bash
+python scripts/run_xai.py \
+  --xai_method gradcam \
+  --cam_method nonclass_gradcam \
+  --run_folder DINOv3ViTB \
+  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA
+```
+
+HiResCAM
 ```bash
 python scripts/run_xai.py \
   --xai_method gradcam \
@@ -128,14 +154,28 @@ python scripts/run_xai.py \
   --dataset ODELIA
 ```
 
+HiResCAM no ReLU
 ```bash
 python scripts/run_xai.py \
   --xai_method gradcam \
+  --cam_method hires_cam \
+  --norelu \
   --run_folder DINOv3ViTB \
   --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
   --dataset ODELIA
 ```
 
+HiResCAM - NON Class specific
+```bash
+python scripts/run_xai.py \
+  --xai_method gradcam \
+  --cam_method nonclass_hires_cam \
+  --run_folder DINOv3ViTB \
+  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA
+```
+
+Last-later Attention
 ```bash
 python scripts/run_xai.py \
   --xai_method attention \
@@ -145,6 +185,7 @@ python scripts/run_xai.py \
   --dataset ODELIA
 ```
 
+Attention Rollout
 ```bash
 python scripts/run_xai.py \
   --xai_method attention \
@@ -154,6 +195,7 @@ python scripts/run_xai.py \
   --dataset ODELIA
 ```
 
+Gradient Self Attention Maps (GradSAM)
 ```bash
 python scripts/run_xai.py \
   --xai_method attention \
@@ -162,6 +204,7 @@ python scripts/run_xai.py \
   --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
   --dataset ODELIA
 ```
+Using DINOv2
 
 ```bash
 python scripts/run_xai.py \
