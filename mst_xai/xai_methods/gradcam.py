@@ -115,9 +115,6 @@ class GradCAM_MST(BaseSaliencyMethod):
             
                 self.model.zero_grad()
 
-                self.activations_and_grads.gradients = [] # Clear gradients before backward pass for each class
-                self.activations_and_grads.activations = [] # Clear activations before backward pass for each class
-
                 class_specific_logits.backward(retain_graph=True)  # Compute gradients for each class
 
                 acts = self.activations_and_grads.activations  # (B*D, N, C)
