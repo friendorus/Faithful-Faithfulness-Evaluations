@@ -27,6 +27,8 @@ XAI_METHODS = [
     # "gradcam_no_relu",
     # "hires_cam_no_relu",
     "random",
+    "nonclass_gradcam",
+    "nonclass_hires_cam",
 ]
 
 COMMON_ARGS = [
