@@ -204,6 +204,17 @@ python scripts/run_xai.py \
   --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
   --dataset ODELIA
 ```
+
+Gradient Rollout
+```bash
+python scripts/run_xai.py \
+  --xai_method attention \
+  --attention_method grad_rollout\
+  --run_folder DINOv3ViTB \
+  --checkpoint_name challenge_mstv3-vit_sch_CB_sub2_best.chkpt \
+  --dataset ODELIA
+```
+
 Using DINOv2
 
 ```bash

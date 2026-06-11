@@ -37,7 +37,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         self.model.eval()  # Set model to evaluation mode
 
         assert mode in ["spatial", "slice"]
-        assert attention_method in ["last_layer", "slice_weighted_rollout", "grad_sam"]
+        assert attention_method in ["last_layer", "slice_weighted_rollout", "grad_sam", "grad_rollout"]
 
         self.mode = mode
         self.resize_to_input = resize_to_input
@@ -113,6 +113,19 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # cls_attn = slice_weights * patch_cam  # [32, 196]
 
             cls_attn = patch_cam
+        elif self.attention_method == "grad_rollout":
+            if target_class is None:
+                target_class = logits.argmax(dim=-1)
+            score = logits[:, target_class]
+  
+            for attn in self.model.attention_maps:
+                attn.retain_grad() # command to retain gradients for every transformer layer
+            self.model.zero_grad() # clear all gradient before backward pass
+            score.backward()
+
+            cls_attn = self._grad_rollout(
+                self.model.attention_maps, num_special=self.num_special
+            )
         else:
             raise ValueError(f"Unknown attention method: {self.attention_method}")
 
@@ -233,6 +246,48 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
 
         return cam 
 
+    def _grad_rollout(self, attn_maps, num_special, discard_ratio=0.9):
+        rollout = None
+
+        for attn in attn_maps:
+            grad = attn.grad
+            if grad is None:
+                continue
+            # # Grad Rollout
+            # cam = attn * torch.relu(grad) # [32, 12, 201, 201]
+            # # aggregate heads
+            # cam = cam.mean(dim=1) # [32, 201, 201]
+
+            cam = (attn * grad).mean(dim=1) # [32, 201, 201] Average over heads
+            cam = torch.relu(cam) # ReLU to keep only positive contributions
+
+            B, N, _ = cam.shape # [B = 32, N = 201]
+
+            if discard_ratio > 0:
+                flat = cam.view(cam.size(0), -1) 
+                k = int(flat.size(-1) * discard_ratio)
+                _, indices = flat.topk( 
+                    k=k, 
+                    dim=-1, 
+                    largest=False) # Indices of lowest values
+                batch_indices = torch.arange(
+                    B, device=flat.device).unsqueeze(-1) 
+                flat[batch_indices, indices] = 0 # Zero out lowest values # Apply independently to every slice
+                cam = flat.view_as(cam) # Reshape back to [B, N, N
+            I = torch.eye(cam.size(-1), device=cam.device).unsqueeze(0) # [1, N, N]
+            cam = cam + I # Add residual connection # [B, N, N]
+            cam = cam / cam.sum(dim=-1, keepdim=True) # Normalize to make sum = 1 # [B, N, N]
+
+            rollout = cam if rollout is None else torch.matmul(cam, rollout) # Recursive multiplication # [B, N, N] @ [B, N, N] → [B, N, N]
+
+        if rollout is None:
+            raise RuntimeError("No Grad Rollout gradients found.")
+
+        rollout = rollout[:, 0, 1 + num_special:]   # CLS → patches
+
+        rollout = rollout / (rollout.sum(dim=-1, keepdim=True) + 1e-8) # Normalize final rollout
+
+        return rollout
     # --------------------------------------------------
     # Utils
     # --------------------------------------------------
