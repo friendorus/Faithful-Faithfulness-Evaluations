@@ -37,7 +37,9 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         self.model.eval()  # Set model to evaluation mode
 
         assert mode in ["spatial", "slice"]
-        assert attention_method in ["last_layer", "slice_weighted_rollout", "grad_sam", "grad_rollout"]
+        assert attention_method in ["last_layer", 
+                                    "slice_weighted_rollout", "grad_sam", "grad_rollout",
+                                    "nonclass_grad_sam", "nonclass_grad_rollout"]
 
         self.mode = mode
         self.resize_to_input = resize_to_input
@@ -96,36 +98,86 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             attn_slice = self.model.get_slice_attention()       # [32,1,1]
             slice_weights = attn_slice.squeeze(-1) # [B*D,1]
             cls_attn = slice_weights * rollout  # [32, 196]
-        elif self.attention_method == "grad_sam":
-            if target_class is None:
-                target_class = logits.argmax(dim=-1)
-            score = logits[:, target_class]
-            for attn in self.model.attention_maps:
-                attn.retain_grad() # command to retain gradients for every transformer layer
-            self.model.zero_grad() # clear all gradient before backward pass
-            score.backward()
 
-            patch_attn_maps = self.model.attention_maps # list of [B*D, Heads, Tokens, Tokens]
-            patch_cam = self._grad_sam(patch_attn_maps, num_special=self.num_special)  # [B*D, N-1-4]
-                        
-            # attn_slice = self.model.get_slice_attention()       # [32,1,1]
-            # slice_weights = attn_slice.squeeze(-1) # [B*D,1]
-            # cls_attn = slice_weights * patch_cam  # [32, 196]
+        elif self.attention_method in ["grad_sam","nonclass_grad_sam"]:
+            if self.attention_method == "grad_sam":
+                if target_class is None:
+                    target_class = logits.argmax(dim=-1)
+                score = logits[:, target_class]
+                for attn in self.model.attention_maps:
+                    attn.retain_grad() # command to retain gradients for every transformer layer
+                self.model.zero_grad() # clear all gradient before backward pass
+                score.backward()
 
-            cls_attn = patch_cam
-        elif self.attention_method == "grad_rollout":
-            if target_class is None:
-                target_class = logits.argmax(dim=-1)
-            score = logits[:, target_class]
-  
-            for attn in self.model.attention_maps:
-                attn.retain_grad() # command to retain gradients for every transformer layer
-            self.model.zero_grad() # clear all gradient before backward pass
-            score.backward()
+                patch_attn_maps = self.model.attention_maps # list of [B*D, Heads, Tokens, Tokens]
+                patch_cam = self._grad_sam(patch_attn_maps, num_special=self.num_special)  # [B*D, N-1-4]
+                            
+                # attn_slice = self.model.get_slice_attention()       # [32,1,1]
+                # slice_weights = attn_slice.squeeze(-1) # [B*D,1]
+                # cls_attn = slice_weights * patch_cam  # [32, 196]
 
-            cls_attn = self._grad_rollout(
-                self.model.attention_maps, num_special=self.num_special
-            )
+                cls_attn = patch_cam
+
+            elif self.attention_method == "nonclass_grad_sam":
+                num_classes = 3 # change to actual number of classes
+                cam = []
+                for class_idx in range(num_classes):
+                    self.model.zero_grad(set_to_none=True) # Clear gradients for all parameters 
+                    # Clear stored gradients for attention maps
+                    if hasattr(self.model, "attention_maps"):
+                        for attn in self.model.attention_maps:
+                            if hasattr(attn, "grad") and attn.grad is not None:
+                                attn.grad = None
+                    
+                    logits = self.model(batch["source"], save_attn=True) # Forward pass with attention storage
+                    class_specific_logits = logits[:, class_idx]
+                    for attn in self.model.attention_maps:
+                        attn.retain_grad() # command to retain gradients for every transformer layer
+                    
+                    class_specific_logits.backward()  # Compute gradients for each class
+                    patch_attn_maps = self.model.attention_maps # list of [B*D, Heads, Tokens, Tokens]
+                    patch_cam = self._grad_sam(patch_attn_maps, num_special=self.num_special,class_specific = False)
+                    cam.append(patch_cam)
+                    del logits, class_specific_logits # Free memory
+                cam = torch.stack(cam, dim=0).mean(dim=0) # Average over classes
+                cls_attn = cam
+
+        elif self.attention_method in ["grad_rollout", "nonclass_grad_rollout"]:
+            if self.attention_method == "grad_rollout":
+                if target_class is None:
+                    target_class = logits.argmax(dim=-1)
+                score = logits[:, target_class]
+    
+                for attn in self.model.attention_maps:
+                    attn.retain_grad() # command to retain gradients for every transformer layer
+                self.model.zero_grad() # clear all gradient before backward pass
+                score.backward()
+
+                cls_attn = self._grad_rollout(
+                    self.model.attention_maps, num_special=self.num_special
+                )
+            elif self.attention_method == "nonclass_grad_rollout":
+                num_classes = 3 # change to actual number of classes
+                rollout = []
+                for class_idx in range(num_classes):
+                    self.model.zero_grad(set_to_none=True) # Clear gradients for all parameters 
+                    # Clear stored gradients for attention maps
+                    if hasattr(self.model, "attention_maps"):
+                        for attn in self.model.attention_maps:
+                            if hasattr(attn, "grad") and attn.grad is not None:
+                                attn.grad = None
+                    
+                    logits = self.model(batch["source"], save_attn=True) # Forward pass with attention storage
+                    class_specific_logits = logits[:, class_idx]
+                    for attn in self.model.attention_maps:
+                        attn.retain_grad() # command to retain gradients for every transformer layer
+                    
+                    class_specific_logits.backward()  # Compute gradients for each class
+                    rollout.append(self._grad_rollout(
+                        self.model.attention_maps, num_special=self.num_special, class_specific=False
+                    ))
+                    del logits, class_specific_logits # Free memory
+                cls_attn = torch.stack(rollout, dim=0).mean(dim=0) # Average over classes
         else:
             raise ValueError(f"Unknown attention method: {self.attention_method}")
 
@@ -217,14 +269,17 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
 
         return rollout
     
-    def _grad_sam(self, attn_maps, num_special):
+    def _grad_sam(self, attn_maps, num_special,class_specific = True):
         cams = []
         for attn in attn_maps:
             grad = attn.grad
             if grad is None:
                 continue
             # Grad-SAM
-            cam = attn * torch.relu(grad) # [32, 12, 201, 201]
+            if class_specific == True:
+                cam = attn * torch.relu(grad) # [32, 12, 201, 201]
+            elif class_specific == False:
+                cam = attn * (grad.abs()) # [32, 12, 201, 201] Keep both positive and negative contributions
             # aggregate heads
             cam = cam.mean(dim=1) # [32, 201, 201]
             # aggregrate on j dimension (tokens attended to)
@@ -246,7 +301,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
 
         return cam 
 
-    def _grad_rollout(self, attn_maps, num_special, discard_ratio=0.9):
+    def _grad_rollout(self, attn_maps, num_special, class_specific = True,discard_ratio=0.9):
         rollout = None
 
         for attn in attn_maps:
@@ -259,7 +314,10 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # cam = cam.mean(dim=1) # [32, 201, 201]
 
             cam = (attn * grad).mean(dim=1) # [32, 201, 201] Average over heads
-            cam = torch.relu(cam) # ReLU to keep only positive contributions
+            if class_specific:
+                cam = torch.relu(cam) # ReLU to keep only positive contributions
+            else:
+                cam = cam.abs() # Keep both positive and negative contributions
 
             B, N, _ = cam.shape # [B = 32, N = 201]
 

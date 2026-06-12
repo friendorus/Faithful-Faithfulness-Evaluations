@@ -42,7 +42,8 @@ def parse_args():
                         help="Method for Grad-CAM variant to use")
     parser.add_argument("--norelu", action="store_true", help="Whether to skip ReLU in Grad-CAM (i.e., allow negative importance scores)")
     parser.add_argument("--attention_method", default="last_layer", 
-                        choices=['last_layer','slice_weighted_rollout','grad_sam','grad_rollout'],)
+                        choices=['last_layer','slice_weighted_rollout','grad_sam','grad_rollout',
+                                 'nonclass_grad_sam', 'nonclass_grad_rollout'],)
 
     return parser.parse_args()
 
@@ -145,13 +146,18 @@ def generate_saliency(args, xai, model, batch):
 
     elif args.xai_method == "attention": 
 
-        # Single forward pass with attention storage
-        logits = model(
-            batch["source"],
-            save_attn=True
-        )
+        if args.attention_method not in ["nonclass_grad_sam", "nonclass_grad_rollout"]:
+            # Single forward pass with attention storage
+            logits = model(
+                batch["source"],
+                save_attn=True
+            )
 
-        pred = logits.argmax(dim=1).item()
+            pred = logits.argmax(dim=1).item()
+        
+        elif args.attention_method in ["nonclass_grad_sam", "nonclass_grad_rollout"]:
+            logits = None
+            pred = None
 
         saliency = xai.generate(
             batch,
