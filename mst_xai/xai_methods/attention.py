@@ -180,24 +180,49 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
                     ))
                     del logits, class_specific_logits # Free memory
                 cls_attn = torch.stack(rollout, dim=0).mean(dim=0) # Average over classes
-        elif self.attention_method in ["gmar_l1", "gmar_l2"]:
+        elif self.attention_method in ["gmar_l1", "gmar_l2", "nonclass_gmar_l1", "nonclass_gmar_l2"]:
+            if self.attention_method in ["gmar_l1", "gmar_l2"]:
 
-            if target_class is None:
-                target_class = logits.argmax(dim=-1)
+                if target_class is None:
+                    target_class = logits.argmax(dim=-1)
 
-            score = logits[:, target_class]
+                score = logits[:, target_class]
 
-            for attn in self.model.attention_maps:
-                attn.retain_grad()
+                for attn in self.model.attention_maps:
+                    attn.retain_grad()
 
-            self.model.zero_grad()
-            score.backward()
+                self.model.zero_grad()
+                score.backward()
 
-            cls_attn = self._gmar_rollout(
-                self.model.attention_maps,
-                num_special=self.num_special,
-                norm_type="l1" if self.attention_method == "gmar_l1" else "l2"
-            )
+                cls_attn = self._gmar_rollout(
+                    self.model.attention_maps,
+                    num_special=self.num_special,
+                    norm_type="l1" if self.attention_method == "gmar_l1" else "l2"
+                )
+            elif self.attention_method in ["nonclass_gmar_l1", "nonclass_gmar_l2"]:
+                num_classes = 3 # change to actual number of classes
+                rollout = []
+                for class_idx in range(num_classes):
+                    self.model.zero_grad(set_to_none=True) # Clear gradients for all parameters 
+                    # Clear stored gradients for attention maps
+                    if hasattr(self.model, "attention_maps"):
+                        for attn in self.model.attention_maps:
+                            if hasattr(attn, "grad") and attn.grad is not None:
+                                attn.grad = None
+                    
+                    logits = self.model(batch["source"], save_attn=True) # Forward pass with attention storage
+                    class_specific_logits = logits[:, class_idx]
+                    for attn in self.model.attention_maps:
+                        attn.retain_grad() # command to retain gradients for every transformer layer
+                    
+                    class_specific_logits.backward()  # Compute gradients for each class
+                    rollout.append(self._gmar_rollout(
+                        self.model.attention_maps,
+                        num_special=self.num_special,
+                        norm_type="l1" if self.attention_method == "nonclass_gmar_l1" else "l2"
+                    ))
+                    del logits, class_specific_logits # Free memory
+                cls_attn = torch.stack(rollout, dim=0).mean(dim=0) # Average over classes
         else:
             raise ValueError(f"Unknown attention method: {self.attention_method}")
 
@@ -366,7 +391,7 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
 
         return rollout
 
-    def _gmar_rollout(self, attn_maps, num_special, norm_type="l1"):
+    def _gmar_rollout(self, attn_maps, num_special, norm_type="l1", alpha=1.0):
         """
         GMAR: Gradient-Driven Multi-head Attention Rollout
         """
@@ -398,14 +423,16 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # --------------------------------------------------
             # Weighted attention
             # --------------------------------------------------
-            cam = (attn * W).sum(dim=1)  # [B,N,N]
+            cam = (attn * W)  # [B,H,N,N]
+
+            cam = cam.mean(dim=1)  # Average over heads → [B, N, N]
 
 
             I = torch.eye(N,device=cam.device).unsqueeze(0)
-            cam = cam + I
+            cam = cam + (alpha * I)
             cam = cam / (cam.sum(dim=-1, keepdim=True) + 1e-8)
 
-            rollout = (cam if rollout is None else torch.matmul(cam, rollout))
+            rollout = (cam if rollout is None else torch.matmul(rollout, cam))
 
         if rollout is None:
             raise RuntimeError(

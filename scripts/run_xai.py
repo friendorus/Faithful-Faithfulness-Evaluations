@@ -147,7 +147,8 @@ def generate_saliency(args, xai, model, batch):
 
     elif args.xai_method == "attention": 
 
-        if args.attention_method not in ["nonclass_grad_sam", "nonclass_grad_rollout"]:
+        if args.attention_method not in ["nonclass_grad_sam", "nonclass_grad_rollout",
+                                         "nonclass_gmar_l1", "nonclass_gmar_l2"]:
             # Single forward pass with attention storage
             logits = model(
                 batch["source"],
@@ -156,7 +157,8 @@ def generate_saliency(args, xai, model, batch):
 
             pred = logits.argmax(dim=1).item()
         
-        elif args.attention_method in ["nonclass_grad_sam", "nonclass_grad_rollout"]:
+        elif args.attention_method in ["nonclass_grad_sam", "nonclass_grad_rollout",
+                                        "nonclass_gmar_l1", "nonclass_gmar_l2"]:
             logits = None
             pred = None
 
