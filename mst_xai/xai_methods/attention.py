@@ -323,19 +323,17 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
 
     def _grad_rollout(self, attn_maps, num_special, class_specific = True,discard_ratio=0.9):
         rollout = None
-
         for attn in attn_maps:
             grad = attn.grad
             if grad is None:
                 continue
-            # # Grad Rollout
-            # cam = attn * torch.relu(grad) # [32, 12, 201, 201]
-            # # aggregate heads
-            # cam = cam.mean(dim=1) # [32, 201, 201]
-
+            # Average over heads BEFORE discarding low values
+            # Follow original code
             cam = (attn * grad).mean(dim=1) # [32, 201, 201] Average over heads
             if class_specific:
-                cam = torch.relu(cam) # ReLU to keep only positive contributions
+                # original code don't use ReLU
+                cam[cam < 0] = 0 # ReLU to keep only positive contributions
+                # cam = torch.relu(cam) # ReLU to keep only positive contributions
             else:
                 cam = cam.abs() # Keep both positive and negative contributions
 
@@ -348,12 +346,13 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
                     k=k, 
                     dim=-1, 
                     largest=False) # Indices of lowest values
+                # need batch indices because it's batch of 32 slices
                 batch_indices = torch.arange(
                     B, device=flat.device).unsqueeze(-1) 
                 flat[batch_indices, indices] = 0 # Zero out lowest values # Apply independently to every slice
-                cam = flat.view_as(cam) # Reshape back to [B, N, N
+                # cam = flat.view_as(cam) # Reshape back to [B, N, N
             I = torch.eye(cam.size(-1), device=cam.device).unsqueeze(0) # [1, N, N]
-            cam = cam + I # Add residual connection # [B, N, N]
+            cam = (cam + I)/ 2 # Add residual connection # [B, N, N]
             cam = cam / cam.sum(dim=-1, keepdim=True) # Normalize to make sum = 1 # [B, N, N]
 
             rollout = cam if rollout is None else torch.matmul(cam, rollout) # Recursive multiplication # [B, N, N] @ [B, N, N] → [B, N, N]
