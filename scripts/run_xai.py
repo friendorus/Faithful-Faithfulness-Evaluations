@@ -43,6 +43,7 @@ def parse_args():
     parser.add_argument("--norelu", action="store_true", help="Whether to skip ReLU in Grad-CAM (i.e., allow negative importance scores)")
     parser.add_argument("--attention_method", default="last_layer", 
                         choices=['last_layer','slice_weighted_rollout','grad_sam','grad_rollout',
+                                 'gmar_l1', 'gmar_l2','nonclass_gmar_l1', 'nonclass_gmar_l2',
                                  'nonclass_grad_sam', 'nonclass_grad_rollout'],)
 
     return parser.parse_args()

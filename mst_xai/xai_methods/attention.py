@@ -37,9 +37,11 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         self.model.eval()  # Set model to evaluation mode
 
         assert mode in ["spatial", "slice"]
-        assert attention_method in ["last_layer", 
-                                    "slice_weighted_rollout", "grad_sam", "grad_rollout",
-                                    "nonclass_grad_sam", "nonclass_grad_rollout"]
+        assert attention_method in ["last_layer", "slice_weighted_rollout", 
+                                    "grad_sam", "grad_rollout",
+                                    "gmar_l1", "gmar_l2",
+                                    "nonclass_grad_sam", "nonclass_grad_rollout",
+                                    "nonclass_gmar_l1", "nonclass_gmar_l2"]
 
         self.mode = mode
         self.resize_to_input = resize_to_input
@@ -178,6 +180,24 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
                     ))
                     del logits, class_specific_logits # Free memory
                 cls_attn = torch.stack(rollout, dim=0).mean(dim=0) # Average over classes
+        elif self.attention_method in ["gmar_l1", "gmar_l2"]:
+
+            if target_class is None:
+                target_class = logits.argmax(dim=-1)
+
+            score = logits[:, target_class]
+
+            for attn in self.model.attention_maps:
+                attn.retain_grad()
+
+            self.model.zero_grad()
+            score.backward()
+
+            cls_attn = self._gmar_rollout(
+                self.model.attention_maps,
+                num_special=self.num_special,
+                norm_type="l1" if self.attention_method == "gmar_l1" else "l2"
+            )
         else:
             raise ValueError(f"Unknown attention method: {self.attention_method}")
 
@@ -344,6 +364,57 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
         rollout = rollout[:, 0, 1 + num_special:]   # CLS → patches
 
         rollout = rollout / (rollout.sum(dim=-1, keepdim=True) + 1e-8) # Normalize final rollout
+
+        return rollout
+
+    def _gmar_rollout(self, attn_maps, num_special, norm_type="l1"):
+        """
+        GMAR: Gradient-Driven Multi-head Attention Rollout
+        """
+        rollout = None
+        for attn in attn_maps:
+            grad = attn.grad
+            if grad is None:
+                continue
+            B, H, N, _ = attn.shape
+            # --------------------------------------------------
+            # Compute head importance
+            # --------------------------------------------------
+            if norm_type == "l1":
+                # GR_h = sum(|G_h|)
+                head_scores = grad.abs().sum(dim=(0, 2, 3))  # [H]
+
+            elif norm_type == "l2":
+                # GR_h = sqrt(sum(G_h²))
+                head_scores = torch.sqrt((grad ** 2)
+                                         .sum(dim=(0, 2, 3)))  # [H]
+            else:
+                raise ValueError(f"Unknown norm_type {norm_type}")
+
+            # normalize head weights
+            head_weights = (head_scores /(head_scores.sum() + 1e-8))  # [H]
+
+            W = head_weights.view(1, H, 1, 1) # [1, H, 1, 1] Broadcastable to attn shape
+
+            # --------------------------------------------------
+            # Weighted attention
+            # --------------------------------------------------
+            cam = (attn * W).sum(dim=1)  # [B,N,N]
+
+
+            I = torch.eye(N,device=cam.device).unsqueeze(0)
+            cam = cam + I
+            cam = cam / (cam.sum(dim=-1, keepdim=True) + 1e-8)
+
+            rollout = (cam if rollout is None else torch.matmul(cam, rollout))
+
+        if rollout is None:
+            raise RuntimeError(
+                "No GMAR gradients found."
+            )
+
+        rollout = rollout[:, 0, 1 + num_special:]
+        rollout = rollout / (rollout.sum(dim=-1,keepdim=True)+ 1e-8)
 
         return rollout
     # --------------------------------------------------
