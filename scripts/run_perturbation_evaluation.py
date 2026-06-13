@@ -35,11 +35,12 @@ parser.add_argument("--mode", required=True, choices=["deletion", "insertion", "
 parser.add_argument("--xai_method", required=True, choices=["gradcam", "gradcam_no_relu", "last_layer", "slice_weighted_rollout", 
                                                             "hires_cam","hires_cam_no_relu","grad_sam", "grad_rollout",
                                                             "nonclass_gradcam","nonclass_hires_cam","random",
-                                                            "nonclass_grad_sam", "nonclass_grad_rollout"], 
+                                                            "nonclass_grad_sam", "nonclass_grad_rollout",
+                                                            "gmar_l1", "gmar_l2", "nonclass_gmar_l1", "nonclass_gmar_l2"], 
                                                             help="XAI method to evaluate",)
 parser.add_argument("--steps", type=int, default=20)
 parser.add_argument("--max_samples", type=int, default=-1, help="-1 = all available saliency files")
-parser.add_argument("--replacement", default="minimum-intensity", choices=["minimum-intensity", "black-3", "black-5", "black-10", 
+parser.add_argument("--replacement", default="minimum-intensity", choices=["minimum-intensity", "maximum-intensity", "black-3", "black-5", "black-10", 
                                                                         "white-5", "white-10", "zero", "mean", "zero_conf", "gaussian_blur",
                                                                          "attention_mask"], 
                                                                         help="Baseline for perturbation",)

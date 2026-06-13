@@ -150,6 +150,10 @@ def perturbation_evaluation(
         min_value = source.min()
         repl = torch.full_like(source, min_value)
 
+    elif replacement == "maximum-intensity":
+        max_value = source.max()
+        repl = torch.full_like(source, max_value)    
+
     elif replacement == "zero": 
         # Zeroing out the patch (setting to zero)
         # for MRI, zeroing out is not blackening, but setting to zero value of MRI
@@ -161,11 +165,15 @@ def perturbation_evaluation(
 
     elif replacement == "gaussian_blur": 
         # apply gaussian blur to the whole image (need to be at patch level, not image level)
-        repl = gaussian_blur_patchwise(source, 
-                                       patch_size=patch_size, 
-                                       kernel_size=9, 
-                                       sigma=2.0)
-
+        # repl = gaussian_blur_patchwise(source, 
+        #                                patch_size=patch_size, 
+        #                                kernel_size=9, 
+        #                                sigma=2.0)
+        repl = gaussian_blur_volume(
+            source,
+            kernel_size=9,
+            sigma=2.0,
+        )
     elif replacement == "zero_conf": 
         assert reference_source is not None, \
             "reference_source required for zero_conf replacement"
@@ -354,5 +362,46 @@ def gaussian_blur_patchwise(
     x = x.view(B, D, H_p, W_p, C, patch_size, patch_size)
     x = x.permute(0, 4, 1, 2, 5, 3, 6)
     x = x.reshape(B, C, D, H, W)
+
+    return x
+
+def gaussian_blur_volume(
+    x: torch.Tensor,
+    kernel_size: int = 9,
+    sigma: float = 2.0,
+) -> torch.Tensor:
+
+    assert x.dim() == 5, f"Expected [B,C,D,H,W], got {x.shape}"
+
+    B, C, D, H, W = x.shape
+
+    coords = torch.arange(
+        kernel_size,
+        device=x.device,
+        dtype=x.dtype,
+    )
+    coords -= kernel_size // 2
+
+    kernel = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+    kernel /= kernel.sum()
+
+    ky = kernel.view(1, 1, 1, kernel_size, 1).repeat(C, 1, 1, 1, 1)
+    kx = kernel.view(1, 1, 1, 1, kernel_size).repeat(C, 1, 1, 1, 1)
+
+    padding = kernel_size // 2
+
+    x = F.conv3d(
+        x,
+        ky,
+        padding=(0, padding, 0),
+        groups=C,
+    )
+
+    x = F.conv3d(
+        x,
+        kx,
+        padding=(0, 0, padding),
+        groups=C,
+    )
 
     return x

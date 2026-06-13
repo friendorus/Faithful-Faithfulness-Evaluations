@@ -7,14 +7,15 @@ CHECKPOINT = "challenge_mstv3-vit_sch_CB_sub2_best.chkpt"  # specify the checkpo
 
 BASELINES = [
     # "minimum-intensity",
+    "maximum-intensity",
     # "black-3",
     # "black-5",
-    # "black-10",
+    "black-10",
     # "white-5",
-    # "white-10",
+    "white-10",
     # "zero",
     # "mean",
-    # "gaussian_blur",
+    "gaussian_blur",
     "attention_mask",
 ]
 
@@ -29,9 +30,14 @@ XAI_METHODS = [
     # "random",
     # "nonclass_gradcam",
     # "nonclass_hires_cam",
-    # "grad_rollout",
-    "nonclass_grad_sam",
+    "gmar_l1",
+    "gmar_l2",
+    "nonclass_gmar_l1",
+    "nonclass_gmar_l2",
+    "grad_rollout",
+    # "nonclass_grad_sam",
     "nonclass_grad_rollout",
+
 ]
 
 COMMON_ARGS = [
