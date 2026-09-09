@@ -1,41 +1,62 @@
-/**/*
-!/**/
+# ============================================================
+# Python / environments
+# ============================================================
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
 /venv/
-!*.ipynb
-!*.gitignore
-!*.md
-!*.bat
-!*.py
-!*.yml
-!*.ui
-!*.yaml
+.env
+*.egg-info/
 
+# ============================================================
+# IDE
+# ============================================================
+.vscode/
+
+
+# ============================================================
+# Folder
+# ============================================================
+/mst/data/
+/mst/models/
+/mst/utils/
+/media/
+/build/
+/Archeived/
+/media/
+/runs/
+/results/
+/wandb/
+/src/
+/tests/
+/wandb/
+scripts/Jupyter_notebook/Confusion Matrix/
+scripts/Jupyter_notebook/Evaluation Performance/
+scripts/Jupyter_notebook/Overlay Image/
+scripts/Jupyter_notebook/Perturbation visualization/
+scripts/Jupyter_notebook/Prediction performance/
+scripts/Jupyter_notebook/Conference Figure/
+scripts/Jupyter_notebook/perturbation_plots/
+
+# ============================================================
+# Models / checkpoints
+# ============================================================
 !requirements.txt
 !version.txt
-
-/docs/build
-!/docs/Makefile
-
-/build/
-
-/runs 
-/results
-/wandb
-!/media/**
-
-# Jupyter
-.ipynb_checkpoints/
 
 
 # Python cache
 __pycache__/
 
 # Experiment outputs
-results/
-results_tta/
-runs/
 *.pt
 *.pth
 *.npy
 *.npz
+*.csv
+*.pkl
+
+test.py
 

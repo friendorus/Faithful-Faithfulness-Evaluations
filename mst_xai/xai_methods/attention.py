@@ -216,12 +216,20 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
                         attn.retain_grad() # command to retain gradients for every transformer layer
                     
                     class_specific_logits.backward()  # Compute gradients for each class
-                    rollout.append(self._gmar_rollout(
+                    class_rollout = self._gmar_rollout(
                         self.model.attention_maps,
                         num_special=self.num_special,
                         norm_type="l1" if self.attention_method == "nonclass_gmar_l1" else "l2"
-                    ))
-                    del logits, class_specific_logits # Free memory
+                    )
+                    rollout.append(class_rollout)
+                    
+                    # print(
+                    #     f"class {class_idx}: "
+                    #     f"min={class_rollout.min():.6f} "
+                    #     f"max={class_rollout.max():.6f} "
+                    #     f"mean={class_rollout.mean():.6f}"
+                    #     )
+                    del logits, class_specific_logits # Free memory                
                 cls_attn = torch.stack(rollout, dim=0).mean(dim=0) # Average over classes
         else:
             raise ValueError(f"Unknown attention method: {self.attention_method}")
@@ -418,6 +426,8 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # normalize head weights
             head_weights = (head_scores /(head_scores.sum() + 1e-8))  # [H]
 
+            # print(head_weights)
+
             W = head_weights.view(1, H, 1, 1) # [1, H, 1, 1] Broadcastable to attn shape
 
             # --------------------------------------------------
@@ -425,14 +435,14 @@ class Attention_MST(BaseSaliencyMethod): #Attention-based saliency (CLS-to-patch
             # --------------------------------------------------
             cam = (attn * W)  # [B,H,N,N]
 
-            cam = cam.mean(dim=1)  # Average over heads → [B, N, N]
+            cam = cam.sum(dim=1)  # Average over heads → [B, N, N]
 
 
             I = torch.eye(N,device=cam.device).unsqueeze(0)
             cam = cam + (alpha * I)
             cam = cam / (cam.sum(dim=-1, keepdim=True) + 1e-8)
 
-            rollout = (cam if rollout is None else torch.matmul(rollout, cam))
+            rollout = (cam if rollout is None else torch.matmul(cam, rollout))
 
         if rollout is None:
             raise RuntimeError(

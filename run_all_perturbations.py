@@ -6,37 +6,39 @@ RUN_FOLDER = "DINOv3ViTB"
 CHECKPOINT = "challenge_mstv3-vit_sch_CB_sub2_best.chkpt"  # specify the checkpoint to evaluate
 
 BASELINES = [
+    # "maximum-intensity",
+    # "gaussian_blur",
     # "minimum-intensity",
-    "maximum-intensity",
     # "black-3",
     # "black-5",
-    "black-10",
+    # "black-10",
+    # "black-8",
     # "white-5",
-    "white-10",
+    # "black-5"
+    # "white-10",
     # "zero",
     # "mean",
-    "gaussian_blur",
     "attention_mask",
 ]
 
 XAI_METHODS = [
     # "gradcam",
-    # "last_layer",
-    # "slice_weighted_rollout",
+    # # "last_layer",
+    # # "slice_weighted_rollout",
     # "hires_cam",
     # "grad_sam",
-    # "gradcam_no_relu",
-    # "hires_cam_no_relu",
+    # # "gradcam_no_relu",
+    # # "hires_cam_no_relu",
     # "random",
-    # "nonclass_gradcam",
-    # "nonclass_hires_cam",
+    # # "nonclass_gradcam",
+    # # "nonclass_hires_cam",
     "gmar_l1",
     "gmar_l2",
     "nonclass_gmar_l1",
     "nonclass_gmar_l2",
-    "grad_rollout",
+    # "grad_rollout",
     # "nonclass_grad_sam",
-    "nonclass_grad_rollout",
+    # "nonclass_grad_rollout",
 
 ]
 
@@ -45,8 +47,8 @@ COMMON_ARGS = [
     "--run_folder", RUN_FOLDER,
     "--checkpoint_name", CHECKPOINT,
     "--dataset", "ODELIA",
-    "--mode", "all",
-    # "--mode", "deletion",
+    # "--mode", "all",
+    "--mode", "insertion",
     "--steps", "20",
     "--save_curves",
 ]

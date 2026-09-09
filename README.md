@@ -1,16 +1,8 @@
 # XAI for Medical Slice Transformer
 
 by Peachapong Poolpol
-(This project is cloned from [Muller Franzes Github](https://github.com/mueller-franzes/MST))
+(This project is adopted model code from [Muller Franzes Github](https://github.com/mueller-franzes/MST))
 
-## Get things set up
-
-create a .env file containing these entries:
-
-```code
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxx
-DATASET_PATH=./mst/data/datasets/ODELIA_datasets
-```
 
 ## MST – Explainable AI & Faithfulness Evaluation
 
@@ -35,8 +27,6 @@ pip install -e .
 ### Data set
 * Add your ODELIA dataset to [mst/data/datasets/datasets/ODELIA](mst/data/datasets/datasets/ODELIA)
 
-- Add your ODELIA dataset to [mst/data/datasets/datasets/ODELIA](mst/data/datasets/datasets/ODELIA)
-
 ## Run Training
 
 ### Train Models
@@ -44,10 +34,6 @@ pip install -e .
 Run Script: [scripts/main_train.py](scripts/main_train.py)
 
 - Eg. `python scripts/main_train.py --dataset ODELIA --model DinoV2ClassifierSlice`
-- Use `--model` to select:
-  - ResNet = 3D ResNet50,
-  - ResNetSliceTrans = MST-ResNet,
-  - DinoV2ClassifierSlice = MST-DINOv2
 
 
 
@@ -69,7 +55,7 @@ Run Script: [scripts/main_predict_eval.py](scripts/main_predict_eval.py)
 | `--output_dir` | `str` | No | `./` | Directory where prediction results will be saved. |
 | `--use_tta` | `flag` | No | `False` | Enable test-time augmentation (TTA) during inference. |
 
-### Usage - No TTA - Basic Run
+### Usage - Basic Run
 
 ```bash
 python scripts/main_predict_eval.py \
@@ -93,15 +79,6 @@ results/
     ├── main_predict.py.txt
     ├── result.csv
     └── roc_multiclass.png
-```
-
-### With TTA
-
-```bash
-python scripts/main_predict_eval.py \
-    --dataset ODELIA \
-    --run_folder ODELIA/DinoV2ClassifierSlice_Final \
-    --use_tta
 ```
 
 ---
@@ -341,8 +318,7 @@ The pipeline is designed to be:
 mst_xai/
 ├── xai_methods/
 │   ├── base.py                     # BaseSaliencyMethod interface
-│   ├── gradcam_patch_level.py      # Grad-CAM (baseline, not MST-faithful)
-│   ├── gradcam_slice_level.py
+│   ├── gradcam.py
 │   └── attention.py                # Attention-based saliency (Raw Attnetion OR Attention Rollout)
 │
 ├── evaluation_methods/
