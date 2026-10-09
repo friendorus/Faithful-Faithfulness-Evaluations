@@ -59,4 +59,5 @@ __pycache__/
 *.pkl
 
 test.py
-
+LICENSE
+setup.py
